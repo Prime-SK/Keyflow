@@ -1,50 +1,42 @@
-# Welcome to your Expo app 👋
+# Keyflow
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+An offline Android music player with a musician's practice console planned in eight phases.
+This implementation covers **Phase 1: local-file selection and native background playback**.
 
-## Get started
+- Expo SDK 54, React Native, TypeScript, and Expo Router
+- Android Media3/ExoPlayer service in a local Kotlin Expo module
+- Keyflow branding, light/dark appearance, local file selection, play/pause, and seeking
+- Notification/lock-screen integration and development-only independent tempo/pitch checks
 
-1. Install dependencies
+## Start
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```powershell
+npm install
+npm run build:android
+npm start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Install the generated `artifacts/keyflow-development.apk` on your Android phone.
+Expo Go can preview the interface with `npm run start:go`, but cannot load the native playback service.
 
-## Learn more
+For an internal test APK that works without Metro or Expo Go, build with:
 
-To learn more about developing your project with Expo, look at the following resources:
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1 -Standalone
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Install `artifacts/keyflow-test.apk`. This uses a test signing key; production signing
+is scheduled for Phase 8. Use the development APK for the tempo/pitch check panel.
 
-## Join the community
+See [Phase 1 setup and device checks](docs/phase-1.md) for build requirements and acceptance tests.
 
-Join our community of developers creating universal apps.
+## Validate
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```powershell
+npm run typecheck
+npm run lint
+npm test
+```
+
+Native tests run as part of `npm run build:android`. Physical-device audio checks are
+required before calling Phase 1 fully verified.

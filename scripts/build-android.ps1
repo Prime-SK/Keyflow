@@ -29,7 +29,7 @@ $variant = if ($Standalone) { 'release' } else { 'debug' }
 $env:NODE_ENV = if ($Standalone) { 'production' } else { 'development' }
 $assembleTask = if ($Standalone) { ':app:assembleRelease' } else { ':app:assembleDebug' }
 try {
-  & .\gradlew.bat :keyflow-playback:testDebugUnitTest $assembleTask '-PreactNativeArchitectures=arm64-v8a' --no-daemon --no-watch-fs --max-workers=4 --console=plain
+  & .\gradlew.bat :keyflow-playback:testDebugUnitTest :keyflow-library:testDebugUnitTest $assembleTask '-PreactNativeArchitectures=arm64-v8a' --no-daemon --no-watch-fs --max-workers=4 --console=plain
   if ($LASTEXITCODE -ne 0) { throw 'Android build or native unit tests failed.' }
 } finally { Pop-Location }
 

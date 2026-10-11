@@ -5,7 +5,7 @@ module.exports = function withKeyflowAndroid(config) {
     const application = mod.modResults.manifest.application?.[0];
     if (application) application.$['android:allowBackup'] = 'false';
     // The playback module supplies its own foreground-service and wake-lock permissions.
-    // Phase 1 selects individual files through SAF, without broad library permissions.
+    // The library module supplies version-appropriate device-audio permissions.
     return mod;
   });
   return withGradleProperties(config, mod => {

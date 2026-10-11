@@ -1,75 +1,81 @@
 # Implementation status
 
-Updated 2026-10-11. Phase 1 is implemented and undergoing physical-device
-acceptance testing. Later phases have not started.
+Updated 2026-10-11. Phase 1 playback is verified. Phase 2 library implementation
+and UI corrections are present; final physical acceptance remains in progress.
+No public release or tag has been created. Publication is deferred until 1.0.0.
 
-## Implemented
+## Verified playback
 
-Keyflow branding using the original logo, reusable light/dark themes with saved
-appearance, a typed Kotlin Expo bridge, Media3 playback owned by a background
-media service, local audio selection, metadata/artwork, play/pause, seeking,
-duration/status/error events, audio-focus handling and headphone-disconnection
-pause. Development-only checks exercise independent tempo and pitch.
+Original Keyflow branding, saved light/dark appearance, local-file selection,
+Media3 background playback, notification/lock-screen controls, seeking, audio
+focus and headphone-disconnection pause. Owner confirmed audible and locked
+playback, earbud controls, uninterrupted picker cancellation, end/replay, saved
+Light appearance, and pausing for another app's audio. Independent native
+practice parameters passed development listening checks. Two muted device decoder
+tests verified MP3, AAC/M4A, FLAC, WAV, Ogg end/replay and corrupt-file errors.
 
-At the owner's request, the prominent 15-second seek buttons were removed;
-seeking remains available through the slider. Next/previous controls belong to
-Phase 3 with its queue, rather than inactive buttons in Phase 1.
+Redmi's Close All may terminate playback; paused recovery remains Phase 3.
+Normal dismissal from recents kept playback running and reconnected correctly.
+Queue, next/previous, playlists, repeat/shuffle and favorites remain Phase 3.
 
-## Validation recorded
+## Persistent library
 
-- Type checking, linting, three JavaScript tests, and six native unit tests pass.
-- Development and standalone internal Android APKs built successfully (arm64,
-  minimum API 24, target API 36). The standalone APK includes the updated controls and its APK signature and
-  embedded JavaScript bundle have been verified.
-- Development and standalone APKs were installed on the owner's authorized Android 16 phone. The standalone app was launched after stopping Metro and removing USB port forwarding.
-- The owner confirmed audible playback of a selected local song, continued
-  playback in the background and while locked, and notification/lock-screen
-  play/pause controls.
-- System media commands paused, advanced the position by 15 seconds, and resumed
-  native playback. A foreground media service and PLAYING state while the phone
-  was dozing were observed.
-- The owner confirmed that 75% tempo, +2 semitones, both together, and reset
-  behave independently as described in the development checks.
-- Both themes rendered in the web interface preview. Audio validation used the
-  real installed Android app, not that preview.
+Separate Kotlin Expo module, Room database, stable physical identities and source
+memberships, native pagination/FTS search/grouping, metadata/artwork, MediaStore
+and persistent local folder grants, manual scans/cancellation and safe source
+reconciliation. Missing references are retained. Library home provides Songs,
+Albums, Artists, Folders, search, sorting, shared playback and a mini-player.
 
-The owner also confirmed slider seeking and uninterrupted playback throughout
-file-picker cancellation.
+Owner confirmed library browsing/search/playback/navigation, duplicate-free
+folder overlap and persistent folder access. Automatic scanning is a saved opt-in
+setting, default off; owner confirmed reopening no longer triggers scans.
 
-The standalone player screen rendered correctly with real embedded artwork and
-progress; its native media session reported PLAYING with Metro stopped.
+## UI/UX correction
 
-The owner confirmed audible standalone playback, earbud gesture controls, and
-automatic pause when disconnecting the earbuds.
+Compact file-picker icon, icon-and-label tabs, pressed states, compact settings,
+mini-player progress, outside-tap sort dismissal, and selecting the active sort
+field to reverse direction. Folder visibility uses switches and reset icons;
+local folder picking can add a library-wide exclusion. Existing per-source
+filters remain accessible separately. Original logo and theme palette retained.
 
-Remaining checks include format/error fixtures, end/replay, appearance
-persistence on the phone, and audio-focus interruptions.
-See docs/phase-1.md. Do not mark the full acceptance checklist complete yet.
+Room schema 3 adds library-wide rules through explicit migration 2-to-3. Rules
+filter queries immediately, including overlapping sources and missing files;
+changing a rule does not request a scan. Library pages update after rule changes
+while the folder-control list preserves its position and saved state.
 
-## Build and resume notes
+## Validation and remaining checks
 
-Workspace-local JDK 17, Android SDK 36, build tools, platform tools, NDK
-27.1.12297006, CMake 3.22.1 and Gradle 8.14.3 are cached under `.tools`.
-Keep these caches. The initial download pause for a metered connection was
-respected; work resumed at the owner's request.
+Typecheck, lint, JS playback regressions, five native library unit tests, standalone
+build and APK signature checks pass. All eleven extended library phone tests passed, including migration 2-to-3, immediate global and source exclusions, nested overrides, missing references, and the 10,000-track query benchmark.
+Prior device coverage verified persistence, query pagination/search, 10,000-track
+query fixtures, metadata fallbacks, scans/cancellation and interrupted recovery.
+Fixtures use isolated databases and never populate the actual music library.
 
-Use `scripts/build-android.ps1` for the development APK; add `-Standalone` for
-`artifacts/keyflow-test.apk`, which embeds JavaScript and local assets. This
-internal test package uses the generated debug signing key, not a production key.
-Development parameter controls are absent from standalone production bundles.
+Updated APK installed; the actual library layout was inspected with 381 songs. Touch interaction acceptance is pending; Redmi denies remote input injection, so the owner is checking sorting and folder visibility manually. Actual OS permission
+revocation, SD-card removal/reinsertion, 10,000-track scrolling and playback while
+scanning still require acceptance results. A query benchmark alone is not proof
+of large-library scrolling. Additional Android versions require test hardware.
 
-Metro excludes tools/artifacts paths with Windows and normalized separators and
-uses separate development/production transform caches. Gradle uses no persistent
-daemon or file-system watcher and limits workers to four, after Windows cache
-rename failures were recovered inside the workspace.
+## Artifacts and build
 
-The test tone/click WAV is available in `artifacts` and was copied to the phone's
-`Music/KeyflowTest` folder. Development testing used USB-reversed port
-8082; Metro is now stopped and the forwarding has been removed. The standalone version needs no Metro connection.
+Latest standalone APK: artifacts/keyflow-test.apk (also keyflow-ui-update.apk).
+Checkpoint APKs 2A/2B/2C remain available; phase-2d.apk is the latest candidate,
+not a declaration that all Phase 2 acceptance checks are complete.
 
-Changes remain in the working tree; generated tools/build files are ignored by
-Git. No cloud build or app publication has been initiated.
+scripts/build-android.ps1 builds and runs native unit tests. -Standalone embeds
+JavaScript/local assets, using an internal test signing key. Development builds
+include the development audio check panel. Standalone needs no Metro or Expo Go.
+Workspace-local JDK/SDK/Gradle caches are in .tools; keep these caches.
+Generated tools/build outputs/APKs are ignored by Git. Changes remain uncommitted.
 
 
+Refreshed library/settings screens visually inspected on the phone in Dark
+appearance. Existing sources remain accessible after schema upgrade. Touch
+acceptance requested; Phase 3 has not started.
 
+
+Owner UI acceptance passed: outside-tap sort dismissal, active-sort reversal,
+immediate folder exclusion/re-inclusion, and improved layout confirmed on the
+physical phone. Earlier pending touch-acceptance notes are now resolved. Remaining
+Phase 2 permission/storage/performance acceptance checks remain open.
 

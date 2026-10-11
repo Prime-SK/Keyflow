@@ -1,0 +1,32 @@
+buildscript {
+  repositories { google(); mavenCentral() }
+  dependencies { classpath 'com.google.devtools.ksp:symbol-processing-gradle-plugin:2.1.20-2.0.1' }
+}
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+apply plugin: 'com.google.devtools.ksp'
+group = 'com.primesk.keyflow'
+version = '0.2.0'
+android {
+  namespace 'com.primesk.keyflow.library'
+  defaultConfig { versionCode 1; versionName '0.2.0'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+  sourceSets { androidTest.assets.srcDirs += files("$projectDir/schemas", "$projectDir/../../keyflow-playback/android/src/androidTest/assets") }
+}
+ksp { arg('room.schemaLocation', "$projectDir/schemas") }
+// Both variants export the same schema; keep first-time exports from racing.
+tasks.configureEach {
+  if (name == 'kspReleaseKotlin') mustRunAfter 'testDebugUnitTest'
+  if (name == 'mergeDebugAndroidTestAssets') dependsOn 'kspDebugKotlin'
+}
+dependencies {
+  implementation 'androidx.room:room-runtime:2.8.5'
+  implementation 'androidx.room:room-ktx:2.8.5'
+  ksp 'androidx.room:room-compiler:2.8.5'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+  testImplementation 'junit:junit:4.13.2'
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+  androidTestImplementation 'androidx.room:room-testing:2.8.5'
+}

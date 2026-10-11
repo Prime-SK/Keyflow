@@ -3,7 +3,7 @@ package com.primesk.keyflow.library
 import android.content.Context
 import android.net.Uri
 
-internal class LibraryRepository(val context: Context, val db: LibraryDatabase = LibraryDatabase.get(context)) {
+class LibraryRepository(val context: Context, val db: LibraryDatabase = LibraryDatabase.get(context)) {
   val dao = db.dao()
   fun availability(trackId: String): String {
     val track = dao.track(trackId) ?: return "missing"
@@ -34,6 +34,15 @@ internal class LibraryRepository(val context: Context, val db: LibraryDatabase =
     val (_, offset) = LibraryQueries.page(options)
     return mapOf("items" to items, "total" to total.toDouble(), "offset" to offset, "hasMore" to (offset + items.size < total))
   }
+  /** Playback owns the chosen URI; a later folder visibility change must not change it. */
+  suspend fun artworkForPlayback(id: String, uri: Uri): String? {
+    val track = dao.track(id) ?: return null
+    val artwork = LibraryMetadata.artwork(context, uri, track.identity, track.modified, track.size)
+    val current = dao.track(id) ?: return null
+    if (current.identity != track.identity || current.modified != track.modified || current.size != track.size) return null
+    if (current.artworkUri != artwork) dao.putTrack(current.copy(artworkUri = artwork))
+    return artwork
+  }
   fun resolve(id: String): Map<String, Any?> {
     val track = dao.track(id) ?: error("This song is no longer in the library.")
     check(LibraryIdentity.libraryIncluded(track.folderKey, dao.libraryRules())) { "This folder is excluded from the library." }
@@ -54,5 +63,18 @@ internal class LibraryRepository(val context: Context, val db: LibraryDatabase =
       } catch (_: Exception) { dao.putLocation(location.copy(availability = "missing")) }
     }
     error("This song is unavailable. Reconnect its storage or grant folder access again.")
+  }
+  /** Queue construction chooses a current grant without opening every upcoming file. */
+  fun queueInput(id: String): Map<String, Any?>? {
+    val track = dao.track(id) ?: return null
+    if (!LibraryIdentity.libraryIncluded(track.folderKey, dao.libraryRules())) return null
+    val location = dao.locations(id).firstOrNull { location ->
+      val source = dao.source(location.sourceId)
+      location.availability in listOf("available", "excluded") && source?.enabled == true && source.access == "available" &&
+        LibraryIdentity.included(track.folderKey, dao.rules(source.id))
+    } ?: return null
+    return mapOf("uri" to location.uri, "fileName" to track.fileName, "title" to track.title,
+      "artist" to track.artist, "durationMs" to track.durationMs.toDouble(), "artworkUri" to track.artworkUri,
+      "mimeType" to track.mimeType, "persistedPermission" to (dao.source(location.sourceId)?.kind == "folder"))
   }
 }

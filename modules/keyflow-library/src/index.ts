@@ -6,6 +6,7 @@ import type { LibraryGroup, LibraryPage, LibraryQuery, LibrarySource, LibraryTra
 declare class KeyflowLibraryModule extends NativeModule<{
   onLibraryChanged: (event: { revision: number; invalidatePages?: boolean }) => void;
   onScanState: (event: ScanState) => void;
+  onCollectionsChanged: (event: { revision: number }) => void;
 }> {
   queryTracks(query: LibraryQuery): Promise<LibraryPage<LibraryTrack>>;
   queryGroups(kind: 'albums' | 'artists' | 'folders', query: LibraryQuery): Promise<LibraryPage<LibraryGroup>>;
@@ -31,6 +32,21 @@ declare class KeyflowLibraryModule extends NativeModule<{
   cancelScan(): Promise<ScanState>;
   getScanState(): Promise<ScanState>;
   getArtwork(id: string): Promise<string | null>;
+  queryPlaylists(query: { offset?: number; limit?: number }): Promise<LibraryPage<Playlist>>;
+  queryCollectionEntries(kind: CollectionKind, id: string | null, query: { offset?: number; limit?: number; search?: string }): Promise<CollectionPage>;
+  createPlaylist(name: string): Promise<string>;
+  renamePlaylist(id: string, name: string): Promise<void>;
+  deletePlaylist(id: string): Promise<void>;
+  addPlaylistEntry(id: string, audio: LocalAudio, trackId: string | null): Promise<string>;
+  movePlaylistEntry(id: string, delta: number): Promise<void>;
+  removePlaylistEntry(id: string): Promise<void>;
+  isFavorite(audio: Pick<LocalAudio, 'uri'>, trackId: string | null): Promise<boolean>;
+  setFavorite(audio: LocalAudio, trackId: string | null, enabled: boolean): Promise<void>;
+  clearRecentlyPlayed(): Promise<void>;
 }
+export type CollectionKind = 'playlist' | 'favorites' | 'recent';
+export interface Playlist { id: string; name: string; count: number }
+export interface CollectionEntry { id: string; trackId: string | null; index: number; audio: LocalAudio; availability: LibraryTrack['availability'] }
+export interface CollectionPage extends LibraryPage<CollectionEntry> { title: string }
 export const library = Platform.OS === 'android' ? requireOptionalNativeModule<KeyflowLibraryModule>('KeyflowLibrary') : null;
 export * from './types';

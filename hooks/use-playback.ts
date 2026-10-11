@@ -28,7 +28,7 @@ function usePlaybackController() {
     if (!playback) return () => { mounted.current = false; };
     const stateSubscription = playback.addListener('onPlaybackState', snapshot);
     const errorSubscription = playback.addListener('onPlaybackError', failure => {
-      if (mounted.current) setError(failure.message);
+      if (mounted.current && failure.code.startsWith('ERR_')) setError(failure.message);
     });
     const appSubscription = AppState.addEventListener('change', status => {
       if (status === 'active') void refresh();
@@ -77,22 +77,35 @@ function usePlaybackController() {
     return opened;
   }, [snapshot]);
 
-  const openLibraryTrack = useCallback((id: string) => command(async () => {
+  const openLibraryTrack = useCallback((id: string, query: Record<string, unknown> = {}) => command(async () => {
     if (!library) throw new Error('The music library requires the installed Android app.');
     await library.getArtwork(id);
-    return playback!.openAudio(await library.resolveTrack(id));
+    return playback!.openLibraryQueue(query, id);
   }), [command]);
   const toggle = useCallback(() => command(() => state.playWhenReady && state.status !== 'ended' && state.status !== 'error'
     ? playback!.pause() : playback!.play()), [command, state.playWhenReady, state.status]);
   const seek = useCallback((positionMs: number) => command(() => playback!.seekTo(positionMs)), [command]);
   const setParameters = useCallback((speed: number, semitones: number, cents = 0) =>
     command(() => playback!.setPlaybackParameters(speed, semitones, cents)), [command]);
+  const next = useCallback(() => command(() => playback!.next()), [command]);
+  const previous = useCallback(() => command(() => playback!.previous()), [command]);
+  const setShuffle = useCallback((enabled: boolean) => command(() => playback!.setShuffle(enabled)), [command]);
+  const setSleepTimer = useCallback((mode: 'off' | 'timed' | 'end', durationMs = 0) => command(() => playback!.setSleepTimer(mode, durationMs)), [command]);
+  const setRepeat = useCallback((mode: 'off' | 'all' | 'one') => command(() => playback!.setRepeat(mode)), [command]);
+  const jumpQueueEntry = useCallback((id: string) => command(() => playback!.jumpQueueEntry(id)), [command]);
+  const moveQueueEntry = useCallback((id: string, delta: number) => command(() => playback!.moveQueueEntry(id, delta)), [command]);
+  const playNextQueueEntry = useCallback((id: string) => command(() => playback!.playNextQueueEntry(id)), [command]);
+  const removeQueueEntry = useCallback((id: string) => command(() => playback!.removeQueueEntry(id)), [command]);
+  const clearUpcoming = useCallback(() => command(() => playback!.clearUpcoming()), [command]);
+  const insertLibraryTrack = useCallback((id: string, playNext: boolean) => command(() => playback!.insertLibraryTrack(id, playNext)), [command]);
+  const openCollection = useCallback((kind: 'playlist' | 'favorites' | 'recent', id: string | null, selected: string) => command(() => playback!.openCollection(kind, id, selected)), [command]);
   const dismissError = useCallback(() => setError(null), []);
 
   return {
     state, operation, error: error ?? state.error?.message ?? null,
     available: playback !== null, chooseSong,
-    openLibraryTrack, dismissError, toggle, seek, setParameters,
+    openLibraryTrack, dismissError, toggle, seek, setParameters, next, previous, setShuffle, setRepeat, setSleepTimer,
+    jumpQueueEntry, moveQueueEntry, playNextQueueEntry, removeQueueEntry, clearUpcoming, insertLibraryTrack, openCollection,
   };
 }
 
@@ -103,9 +116,12 @@ const ActionsContext = createContext<PlaybackActions | null>(null);
 
 export function PlaybackProvider({ children }: PropsWithChildren) {
   const controller = usePlaybackController();
-  const { operation, error, available, chooseSong, openLibraryTrack, dismissError, toggle, seek, setParameters } = controller;
-  const actions = useMemo(() => ({ operation, error, available, chooseSong, openLibraryTrack, dismissError, toggle, seek, setParameters }),
-    [operation, error, available, chooseSong, openLibraryTrack, dismissError, toggle, seek, setParameters]);
+  const { operation, error, available, chooseSong, openLibraryTrack, dismissError, toggle, seek, setParameters, next, previous, setShuffle, setRepeat, setSleepTimer,
+    jumpQueueEntry, moveQueueEntry, playNextQueueEntry, removeQueueEntry, clearUpcoming, insertLibraryTrack, openCollection } = controller;
+  const actions = useMemo(() => ({ operation, error, available, chooseSong, openLibraryTrack, dismissError, toggle, seek, setParameters, next, previous, setShuffle, setRepeat, setSleepTimer,
+    jumpQueueEntry, moveQueueEntry, playNextQueueEntry, removeQueueEntry, clearUpcoming, insertLibraryTrack, openCollection }),
+    [operation, error, available, chooseSong, openLibraryTrack, dismissError, toggle, seek, setParameters, next, previous, setShuffle, setRepeat, setSleepTimer,
+      jumpQueueEntry, moveQueueEntry, playNextQueueEntry, removeQueueEntry, clearUpcoming, insertLibraryTrack, openCollection]);
   return createElement(PlaybackContext.Provider, { value: controller }, createElement(ActionsContext.Provider, { value: actions }, children));
 }
 export function usePlayback() {

@@ -16,6 +16,29 @@ class LibraryDatabaseDeviceTest {
     fileName = "$i.mp3", title = "Song ${i.toString().padStart(5, '0')}", artist = "Artist ${i % 20}",
     album = "Album ${i % 100}", albumArtist = "Artist ${i % 20}", folderKey = "primary:Music/", folderName = "Music")
 
+  @Test fun queueProjectionMatchesVisibleOrderAndUsesAccessibleMembership() {
+    val name = "library-queue-projection.db"; context.deleteDatabase(name)
+    val db = open(name)
+    try {
+      val dao = db.dao()
+      dao.putSource(Source("a", "device", "media", "Device", access = "permission"))
+      dao.putSource(Source("b", "folder", "tree", "Folder"))
+      for (index in 1..125) {
+        val t = track(index); dao.putTrack(t)
+        dao.putLocation(Location("a", "content://blocked/${t.id}", t.id, "scan"))
+        dao.putLocation(Location("b", "content://accessible/${t.id}", t.id, "scan"))
+      }
+      val options = mapOf("limit" to 100, "sort" to "duration", "descending" to true)
+      val normal = dao.tracks(LibraryQueries.tracks(options))
+      val queued = dao.queueTracks(LibraryQueries.tracks(options, queue = true))
+      assertEquals(normal.map { it.id }, queued.map { it.track.id })
+      assertTrue(queued.all { it.queueUri!!.startsWith("content://accessible/") && it.persistedPermission })
+      assertEquals(25, dao.queueTracks(LibraryQueries.tracks(options + mapOf("offset" to 100), queue = true)).size)
+      dao.putRule(FolderRule("b", normal.first().folderKey, false))
+      val filtered = dao.queueTracks(LibraryQueries.tracks(options, queue = true))
+      assertTrue(filtered.all { it.queueUri!!.startsWith("content://blocked/") })
+    } finally { db.close(); context.deleteDatabase(name) }
+  }
   @Test fun persistenceDeduplicationPaginationAndSearch() {
     val name = "library-device-test.db"
     context.deleteDatabase(name)

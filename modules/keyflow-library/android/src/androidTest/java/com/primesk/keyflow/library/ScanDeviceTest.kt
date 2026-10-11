@@ -15,6 +15,20 @@ class ScanDeviceTest {
   private val context = instrumentation.targetContext
   @get:Rule val migrationHelper = MigrationTestHelper(instrumentation, LibraryDatabase::class.java)
 
+  @Test fun migrationThreeToFourPreservesLibraryAndStoresRecovery() {
+    val name = "library-migration-four.db"
+    migrationHelper.createDatabase(name, 3).apply {
+      execSQL("INSERT INTO sources (id,kind,locator,name,enabled,access,lastCompleted) VALUES ('device','device','media','Device',1,'available',0)")
+      close()
+    }
+    migrationHelper.runMigrationsAndValidate(name, 4, true, LibraryDatabase.MIGRATION_3_4).apply {
+      query("SELECT id FROM sources").use { assertTrue(it.moveToFirst()); assertEquals("device", it.getString(0)) }
+      execSQL("INSERT INTO playback_recovery (id,snapshot) VALUES (1,'test')")
+      query("SELECT snapshot FROM playback_recovery").use { assertTrue(it.moveToFirst()); assertEquals("test", it.getString(0)) }
+      close()
+    }
+    context.deleteDatabase(name)
+  }
   @Test fun migrationPreservesExistingTrackAndAddsScanState() {
     val name = "library-migration-test"
     migrationHelper.createDatabase(name, 1).apply {
@@ -51,7 +65,7 @@ class ScanDeviceTest {
   @Test fun realDeviceScanRescanCancelAndPermissionLossAreSafe() {
     val name = "library-scan-test.db"
     context.deleteDatabase(name)
-    val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_1_2).build()
+    val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(LibraryDatabase.MIGRATION_1_2, LibraryDatabase.MIGRATION_2_3, LibraryDatabase.MIGRATION_3_4, LibraryDatabase.MIGRATION_4_5).build()
     val repository = LibraryRepository(context, db)
     val engine = ScanEngine(repository, resume = false)
     try {

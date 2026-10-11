@@ -14,6 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.primesk.keyflow.library.LibraryRepository
 import com.google.common.util.concurrent.ListenableFuture
 import expo.modules.kotlin.activityresult.AppContextActivityResultLauncher
 import expo.modules.kotlin.exception.CodedException
@@ -67,6 +68,9 @@ class KeyflowPlaybackModule : Module() {
     AsyncFunction("getThemePreference") {
       context().getSharedPreferences("keyflow-settings", 0).getString("theme", "system") ?: "system"
     }
+    AsyncFunction("getArtworkTint") Coroutine { uri: String ->
+      withContext(Dispatchers.IO) { ArtworkTint.read(context(), uri) }
+    }
     AsyncFunction("setThemePreference") { preference: String ->
       require(preference in listOf("system", "light", "dark")) { "Choose system, light, or dark appearance." }
       context().getSharedPreferences("keyflow-settings", 0).edit().putString("theme", preference).apply()
@@ -93,33 +97,44 @@ class KeyflowPlaybackModule : Module() {
 
     AsyncFunction("getState") Coroutine { -> withContext(Dispatchers.Main) { state(getController()) } }
 
-    AsyncFunction("openAudio") Coroutine { audio: Map<String, Any?> ->
-      withContext(Dispatchers.Main) {
-        val uri = Uri.parse(audio["uri"] as? String ?: throw IllegalArgumentException("Choose a local audio file first."))
-        require(uri.scheme == "content" || uri.scheme == "file") { "Only local audio files are supported." }
-        val extras = Bundle().apply {
-          putString("fileName", audio["fileName"] as? String)
-          putString("mimeType", audio["mimeType"] as? String)
-          putBoolean("persistedPermission", audio["persistedPermission"] as? Boolean ?: false)
-        }
-        val metadata = MediaMetadata.Builder().setTitle(audio["title"] as? String ?: "Local audio")
-          .setArtist(audio["artist"] as? String).setExtras(extras)
-          .setArtworkUri((audio["artworkUri"] as? String)?.let(Uri::parse)).build()
-        val item = MediaItem.Builder().setMediaId(uri.toString()).setUri(uri)
-          .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(uri).build())
-          .setMediaMetadata(metadata).build()
-        val player = getController()
-        player.playbackParameters = PlaybackParameters.DEFAULT
-        player.setMediaItem(item)
-        player.prepare()
-        player.play()
-        state(player)
-      }
+    AsyncFunction("openAudio") Coroutine { audio: Map<String, Any?> -> withContext(Dispatchers.Main) {
+      val player = getPlayer(); val service = service(); service.ready.await()
+      service.replace(listOf(QueueStorage.item(audio)), 0); state(player)
+    } }
+    AsyncFunction("openLibraryQueue") Coroutine { query: Map<String, Any?>, selected: String ->
+      val queue = withContext(Dispatchers.IO) { QueueStorage.libraryQueue(context(), query, selected) }
+      withContext(Dispatchers.Main) { val player = getPlayer(); val service = service(); service.ready.await()
+        service.replace(queue.first, queue.second); state(player) }
     }
-
+    AsyncFunction("next") Coroutine { -> withContext(Dispatchers.Main) { val player = getPlayer(); service().next(); state(player) } }
+    AsyncFunction("openCollection") Coroutine { kind: String, id: String?, selected: String ->
+      val queue = withContext(Dispatchers.IO) { QueueStorage.collectionQueue(context(), kind, id, selected) }
+      withContext(Dispatchers.Main) { val player = getPlayer(); service().replace(queue.first, queue.second); state(player) }
+    }
+    AsyncFunction("saveQueueAsPlaylist") Coroutine { name: String ->
+      val entries = withContext(Dispatchers.Main) { getPlayer(); service().displayedAudio() }
+      withContext(Dispatchers.IO) { com.primesk.keyflow.library.CollectionsRepository(context()).saveQueue(name, entries).id }
+    }
+    AsyncFunction("previous") Coroutine { -> withContext(Dispatchers.Main) { val player = getPlayer(); service().previous(); state(player) } }
+    AsyncFunction("setShuffle") Coroutine { enabled: Boolean -> withContext(Dispatchers.Main) { val player = getPlayer(); service().shuffle(enabled); state(player) } }
+    AsyncFunction("setSleepTimer") Coroutine { mode: String, durationMs: Double -> withContext(Dispatchers.Main) {
+      require(durationMs.isFinite())
+      val player = getPlayer(); service().setSleepTimer(mode, durationMs.toLong()); state(player)
+    } }
+    AsyncFunction("setRepeat") Coroutine { mode: String -> withContext(Dispatchers.Main) { val player = getPlayer(); service().repeat(mode); state(player) } }
+    AsyncFunction("queryQueue") Coroutine { offset: Int, limit: Int -> withContext(Dispatchers.Main) { getController(); service().queuePage(offset, limit) } }
+    AsyncFunction("jumpQueueEntry") Coroutine { id: String -> withContext(Dispatchers.Main) { val player = getPlayer(); service().jump(id); state(player) } }
+    AsyncFunction("moveQueueEntry") Coroutine { id: String, delta: Int -> withContext(Dispatchers.Main) { val player = getPlayer(); service().move(id, delta); state(player) } }
+    AsyncFunction("playNextQueueEntry") Coroutine { id: String -> withContext(Dispatchers.Main) { val player = getPlayer(); service().playNext(id); state(player) } }
+    AsyncFunction("removeQueueEntry") Coroutine { id: String -> withContext(Dispatchers.Main) { val player = getPlayer(); service().remove(id); state(player) } }
+    AsyncFunction("clearUpcoming") Coroutine { -> withContext(Dispatchers.Main) { val player = getPlayer(); service().clearUpcoming(); state(player) } }
+    AsyncFunction("insertLibraryTrack") Coroutine { id: String, playNext: Boolean ->
+      val item = withContext(Dispatchers.IO) { QueueStorage.item(LibraryRepository(context()).resolve(id), trackId = id) }
+      withContext(Dispatchers.Main) { val player = getPlayer(); service().insert(listOf(item), playNext); state(player) }
+    }
     AsyncFunction("play") Coroutine { ->
       withContext(Dispatchers.Main) {
-        val player = getController()
+        val player = getPlayer()
         require(player.mediaItemCount > 0) { "Choose a song first." }
         if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
@@ -128,10 +143,10 @@ class KeyflowPlaybackModule : Module() {
       }
     }
     AsyncFunction("pause") Coroutine { -> withContext(Dispatchers.Main) {
-      val player = getController(); player.pause(); state(player)
+      val player = getPlayer(); player.pause(); state(player)
     } }
     AsyncFunction("seekTo") Coroutine { positionMs: Double -> withContext(Dispatchers.Main) {
-      val player = getController()
+      val player = getPlayer()
       require(player.isCurrentMediaItemSeekable) { "This file does not support seeking." }
       player.seekTo(PlaybackMath.seekPosition(positionMs, player.duration))
       state(player)
@@ -141,7 +156,7 @@ class KeyflowPlaybackModule : Module() {
       val rate = PlaybackMath.speedFactor(speed)
       val pitch = PlaybackMath.pitchFactor(semitones, cents)
       withContext(Dispatchers.Main) {
-        val player = getController()
+        val player = getPlayer()
         player.playbackParameters = PlaybackParameters(rate, pitch)
         state(player)
       }
@@ -177,6 +192,10 @@ class KeyflowPlaybackModule : Module() {
     }
   }
 
+  private suspend fun getPlayer(): Player { getController(); return service().audioPlayer }
+
+  private fun service() = KeyflowPlaybackService.active ?: error("The music service is unavailable.")
+
   private fun context() = appContext.reactContext?.applicationContext
     ?: throw CodedException("ERR_CONTEXT", "The app is not ready. Try again.", null)
 
@@ -210,6 +229,7 @@ class KeyflowPlaybackModule : Module() {
         controller = connected
         connected.addListener(listener)
       }
+      service().ready.await()
       return connected
     } catch (error: Exception) {
       if (connection === future) {
@@ -229,15 +249,16 @@ class KeyflowPlaybackModule : Module() {
     if (!destroyed && observing && foreground) controller?.let { sendEvent("onPlaybackState", state(it)) }
   }
 
-  private fun state(player: MediaController): Map<String, Any?> {
+  private fun state(controller: Player): Map<String, Any?> {
+    val player = KeyflowPlaybackService.active?.audioPlayer ?: controller
     val duration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0 } ?: 0L
     val item = player.currentMediaItem
-    val metadata = player.mediaMetadata
+    val metadata = item?.mediaMetadata ?: player.mediaMetadata
     val track = item?.let {
-      mapOf("uri" to it.mediaId, "title" to (metadata.title?.toString() ?: "Local audio"),
+      mapOf("uri" to (it.requestMetadata.mediaUri ?: it.localConfiguration?.uri).toString(), "title" to (metadata.title?.toString() ?: "Local audio"),
         "artist" to metadata.artist?.toString(), "fileName" to (metadata.extras?.getString("fileName") ?: "Local audio"),
         "artworkUri" to metadata.artworkUri?.toString(), "durationMs" to duration.toDouble(),
-        "mimeType" to metadata.extras?.getString("mimeType"),
+        "mimeType" to metadata.extras?.getString("mimeType"), "trackId" to metadata.extras?.getString("trackId"),
         "persistedPermission" to (metadata.extras?.getBoolean("persistedPermission") ?: false))
     }
     val status = when {
@@ -254,7 +275,8 @@ class KeyflowPlaybackModule : Module() {
       "bufferedPositionMs" to player.bufferedPosition.coerceAtLeast(0).toDouble(),
       "canSeek" to (item != null && player.isCurrentMediaItemSeekable && duration > 0),
       "speed" to player.playbackParameters.speed.toDouble(), "pitch" to player.playbackParameters.pitch.toDouble(),
-      "error" to player.playerError?.let(::playbackError))
+      "sleepTimer" to (KeyflowPlaybackService.active?.sleepTimer?.state() ?: mapOf("mode" to "off", "remainingMs" to 0)),
+      "error" to player.playerError?.let(::playbackError)) + (KeyflowPlaybackService.active?.queueState() ?: emptyMap())
   }
 
   private fun playbackError(error: PlaybackException): Map<String, String> {

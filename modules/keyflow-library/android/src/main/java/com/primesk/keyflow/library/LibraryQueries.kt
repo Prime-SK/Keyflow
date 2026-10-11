@@ -2,7 +2,7 @@ package com.primesk.keyflow.library
 
 import androidx.sqlite.db.SimpleSQLiteQuery
 
-internal object LibraryQueries {
+object LibraryQueries {
   const val VISIBLE = "COALESCE((SELECT r.included FROM library_folder_rules r WHERE substr(t.folderKey,1,length(r.path))=r.path ORDER BY length(r.path) DESC LIMIT 1),1)=1 AND EXISTS (SELECT 1 FROM locations l JOIN sources s ON s.id=l.sourceId WHERE l.trackId=t.id AND s.enabled=1 AND COALESCE((SELECT r.included FROM folder_rules r WHERE r.sourceId=l.sourceId AND substr(t.folderKey,1,length(r.path))=r.path ORDER BY length(r.path) DESC LIMIT 1),1)=1)"
   fun searchExpression(input: String): String = Regex("[\\p{L}\\p{N}]+").findAll(input).take(20)
     // Adjacent quoted terms imply AND in both Android's legacy FTS4 parser and enhanced parsers.
@@ -42,7 +42,7 @@ internal object LibraryQueries {
     return limit to offset
   }
 
-  fun tracks(options: Map<String, Any?>): SimpleSQLiteQuery {
+  fun tracks(options: Map<String, Any?>, queue: Boolean = false): SimpleSQLiteQuery {
     val (where, args) = where(options)
     val column = when (options["sort"]) {
       "artist" -> "t.artist COLLATE NOCASE"
@@ -54,7 +54,9 @@ internal object LibraryQueries {
     }
     val direction = if (options["descending"] == true) "DESC" else "ASC"
     val (limit, offset) = page(options)
-    return SimpleSQLiteQuery("SELECT t.* FROM tracks t WHERE $where ORDER BY $column $direction, t.id ASC LIMIT ? OFFSET ?",
+    val candidate = "FROM locations l JOIN sources s ON s.id=l.sourceId WHERE l.trackId=t.id AND s.enabled=1 AND COALESCE((SELECT r.included FROM folder_rules r WHERE r.sourceId=l.sourceId AND substr(t.folderKey,1,length(r.path))=r.path ORDER BY length(r.path) DESC LIMIT 1),1)=1 ORDER BY (s.access='available' AND l.availability='available') DESC, l.sourceId, l.uri LIMIT 1"
+    val projection = if (queue) "t.*, (SELECT l.uri $candidate) AS queueUri, COALESCE((SELECT s.kind='folder' $candidate),0) AS persistedPermission" else "t.*"
+    return SimpleSQLiteQuery("SELECT $projection FROM tracks t WHERE $where ORDER BY $column $direction, t.id ASC LIMIT ? OFFSET ?",
       (args + listOf(limit, offset)).toTypedArray())
   }
 

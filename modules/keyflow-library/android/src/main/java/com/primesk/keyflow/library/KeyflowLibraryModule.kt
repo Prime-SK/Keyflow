@@ -18,19 +18,25 @@ class KeyflowLibraryModule : Module() {
   private lateinit var folderPicker: AppContextActivityResultLauncher<String, FolderSelection?>
   private var picking = false
   private var unlisten: (() -> Unit)? = null
+  private var collectionsObserver: androidx.room.InvalidationTracker.Observer? = null
   private fun context() = requireNotNull(appContext.reactContext).applicationContext
   private fun engine() = ScanEngine.get(context())
   private fun repository() = LibraryRepository(requireNotNull(appContext.reactContext).applicationContext)
   private fun changed(invalidatePages: Boolean = false) { sendEvent("onLibraryChanged", mapOf("revision" to System.currentTimeMillis().toDouble(), "invalidatePages" to invalidatePages)) }
   override fun definition() = ModuleDefinition {
     Name("KeyflowLibrary")
-    Events("onLibraryChanged", "onScanState")
+    Events("onLibraryChanged", "onScanState", "onCollectionsChanged")
     RegisterActivityContracts { folderPicker = registerForActivityResult(FolderContract()) { _, _ -> picking = false } }
     OnStartObserving {
       unlisten = engine().listen { event -> sendEvent("onScanState", event); changed() }
+      val observer = object : androidx.room.InvalidationTracker.Observer("playlists", "playlist_entries", "favorites", "recent_plays") {
+        override fun onInvalidated(tables: Set<String>) { sendEvent("onCollectionsChanged", mapOf("revision" to System.currentTimeMillis().toDouble())) }
+      }
+      collectionsObserver = observer
+      LibraryDatabase.get(context()).invalidationTracker.addObserver(observer)
     }
-    OnStopObserving { unlisten?.invoke(); unlisten = null }
-    OnDestroy { unlisten?.invoke(); scope.cancel() }
+    OnStopObserving { unlisten?.invoke(); unlisten = null; stopCollectionsObserver() }
+    OnDestroy { unlisten?.invoke(); stopCollectionsObserver(); scope.cancel() }
     OnActivityEntersForeground { scope.launch {
       val engine = engine()
       engine.refreshAvailability(); changed()
@@ -127,6 +133,17 @@ class KeyflowLibraryModule : Module() {
       }
     } }
     AsyncFunction("queryTracks") Coroutine { options: Map<String, Any?> -> withContext(Dispatchers.IO) { repository().tracks(options) } }
+    AsyncFunction("queryPlaylists") Coroutine { options: Map<String, Any?> -> withContext(Dispatchers.IO) { CollectionsRepository(context()).playlists(options) } }
+    AsyncFunction("queryCollectionEntries") Coroutine { kind: String, id: String?, options: Map<String, Any?> -> withContext(Dispatchers.IO) { CollectionsRepository(context()).entries(kind, id, options) } }
+    AsyncFunction("createPlaylist") Coroutine { name: String -> withContext(Dispatchers.IO) { CollectionsRepository(context()).create(name).id } }
+    AsyncFunction("renamePlaylist") Coroutine { id: String, name: String -> withContext(Dispatchers.IO) { CollectionsRepository(context()).rename(id, name) } }
+    AsyncFunction("deletePlaylist") Coroutine { id: String -> withContext(Dispatchers.IO) { CollectionsRepository(context()).dao.deletePlaylist(id) } }
+    AsyncFunction("addPlaylistEntry") Coroutine { id: String, audio: Map<String, Any?>, trackId: String? -> withContext(Dispatchers.IO) { CollectionsRepository(context()).add(id, audio, trackId).id } }
+    AsyncFunction("movePlaylistEntry") Coroutine { id: String, delta: Int -> withContext(Dispatchers.IO) { CollectionsRepository(context()).move(id, delta) } }
+    AsyncFunction("removePlaylistEntry") Coroutine { id: String -> withContext(Dispatchers.IO) { CollectionsRepository(context()).remove(id) } }
+    AsyncFunction("isFavorite") Coroutine { audio: Map<String, Any?>, trackId: String? -> withContext(Dispatchers.IO) { CollectionsRepository(context()).let { it.dao.isFavorite(it.key(audio, trackId)) } } }
+    AsyncFunction("setFavorite") Coroutine { audio: Map<String, Any?>, trackId: String?, enabled: Boolean -> withContext(Dispatchers.IO) { CollectionsRepository(context()).favorite(audio, trackId, enabled) } }
+    AsyncFunction("clearRecentlyPlayed") Coroutine { -> withContext(Dispatchers.IO) { CollectionsRepository(context()).dao.clearRecent() } }
     AsyncFunction("queryGroups") Coroutine { kind: String, options: Map<String, Any?> -> withContext(Dispatchers.IO) { repository().groups(kind, options) } }
     AsyncFunction("getTrack") Coroutine { id: String -> withContext(Dispatchers.IO) { repository().let { r -> r.dao.track(id)?.let(r::trackMap) } } }
     AsyncFunction("resolveTrack") Coroutine { id: String -> withContext(Dispatchers.IO) { repository().resolve(id) } }
@@ -134,5 +151,9 @@ class KeyflowLibraryModule : Module() {
       mapOf("id" to source.id, "kind" to source.kind, "name" to source.name, "locator" to source.locator,
         "enabled" to source.enabled, "access" to source.access, "lastCompleted" to source.lastCompleted.toDouble(), "error" to source.error)
     } } }
+  }
+  private fun stopCollectionsObserver() {
+    collectionsObserver?.let { LibraryDatabase.get(context()).invalidationTracker.removeObserver(it) }
+    collectionsObserver = null
   }
 }

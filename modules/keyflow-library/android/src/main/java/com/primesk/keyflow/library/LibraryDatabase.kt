@@ -48,8 +48,17 @@ data class TrackSearch(val title: String, val artist: String, val album: String,
 data class SavedScan(@PrimaryKey val id: Int = 1, val status: String = "idle",
   val discovered: Long = 0, val processed: Long = 0, val sourceName: String? = null, val error: String? = null)
 
+@Entity(tableName = "playback_recovery")
+data class PlaybackRecovery(@PrimaryKey val id: Int = 1, val snapshot: String)
+
 @Dao
 interface LibraryDao {
+  @Upsert fun putRecovery(value: PlaybackRecovery)
+  @Upsert fun putRecoveryChunks(values: List<PlaybackRecovery>)
+  @Query("SELECT * FROM playback_recovery ORDER BY id") fun recoveryChunks(): List<PlaybackRecovery>
+  @Query("DELETE FROM playback_recovery") fun clearRecovery()
+  @Transaction fun saveRecoveryChunks(values: List<PlaybackRecovery>) { clearRecovery(); putRecoveryChunks(values) }
+  @Query("SELECT * FROM playback_recovery WHERE id = 1") fun recovery(): PlaybackRecovery?
   @Upsert fun putScan(scan: SavedScan)
   @Query("SELECT * FROM scan_state WHERE id = 1") fun scan(): SavedScan?
   @Upsert fun putTrack(track: Track)
@@ -72,15 +81,20 @@ interface LibraryDao {
   @Query("UPDATE locations SET availability = :availability WHERE sourceId = :id")
   fun setSourceLocations(id: String, availability: String)
   @RawQuery fun tracks(query: SupportSQLiteQuery): List<Track>
+  @RawQuery fun queueTracks(query: SupportSQLiteQuery): List<QueueTrack>
   @RawQuery fun groups(query: SupportSQLiteQuery): List<LibraryGroup>
   @RawQuery fun count(query: SupportSQLiteQuery): Long
 }
 
+data class QueueTrack(@Embedded val track: Track, val queueUri: String?, val persistedPermission: Boolean)
+
 data class LibraryGroup(val key: String, val title: String, val subtitle: String, val count: Long)
 
-@Database(entities = [Track::class, Source::class, Location::class, FolderRule::class, LibraryFolderRule::class, TrackSearch::class, SavedScan::class], version = 3, exportSchema = true)
+@Database(entities = [Track::class, Source::class, Location::class, FolderRule::class, LibraryFolderRule::class, TrackSearch::class, SavedScan::class, PlaybackRecovery::class,
+  Playlist::class, PlaylistEntry::class, Favorite::class, RecentPlay::class], version = 5, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
   abstract fun dao(): LibraryDao
+  abstract fun collections(): CollectionsDao
   companion object {
     val MIGRATION_1_2 = object : Migration(1, 2) {
       override fun migrate(db: SupportSQLiteDatabase) {
@@ -92,11 +106,30 @@ abstract class LibraryDatabase : RoomDatabase() {
         db.execSQL("CREATE TABLE IF NOT EXISTS library_folder_rules (path TEXT NOT NULL, included INTEGER NOT NULL, PRIMARY KEY(path))")
       }
     }
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS playback_recovery (id INTEGER NOT NULL, snapshot TEXT NOT NULL, PRIMARY KEY(id))")
+      }
+    }
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS playlists (id TEXT NOT NULL, name TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(id))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_playlists_updatedAt ON playlists(updatedAt)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS playlist_entries (id TEXT NOT NULL, playlistId TEXT NOT NULL, position INTEGER NOT NULL, trackId TEXT, audio TEXT NOT NULL, PRIMARY KEY(id), FOREIGN KEY(playlistId) REFERENCES playlists(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_playlist_entries_playlistId_position ON playlist_entries(playlistId, position)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_playlist_entries_trackId ON playlist_entries(trackId)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS favorites (`key` TEXT NOT NULL, trackId TEXT, audio TEXT NOT NULL, addedAt INTEGER NOT NULL, PRIMARY KEY(`key`))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_favorites_trackId ON favorites(trackId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_favorites_addedAt ON favorites(addedAt)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS recent_plays (`key` TEXT NOT NULL, trackId TEXT, audio TEXT NOT NULL, playedAt INTEGER NOT NULL, PRIMARY KEY(`key`))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_recent_plays_playedAt ON recent_plays(playedAt)")
+      }
+    }
     @Volatile private var instance: LibraryDatabase? = null
     fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(context.applicationContext, LibraryDatabase::class.java, "keyflow-library.db")
         // No destructive fallback: future versions must supply reviewed migrations.
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
     }
   }
 }

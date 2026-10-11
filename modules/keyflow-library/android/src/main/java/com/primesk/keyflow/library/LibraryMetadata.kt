@@ -40,7 +40,7 @@ internal object LibraryMetadata {
         reader.setDataSource(context, uri)
         val bytes = reader.embeddedPicture
         if (bytes == null || bytes.size > 4 * 1024 * 1024) { absent.writeText(""); prune(cache, absent); return@withContext null }
-        val temporary = File(cache, "$key.tmp")
+        val temporary = File.createTempFile("$key-", ".tmp", cache)
         temporary.writeBytes(bytes)
         if (!temporary.renameTo(file)) { temporary.delete(); return@withContext null }
         // Bound disk use to 64 MB and absence markers to 10,000 entries.

@@ -21,9 +21,11 @@ import kotlinx.coroutines.channels.Channel
 class KeyflowPlaybackService : MediaSessionService() {
   companion object { internal var active: KeyflowPlaybackService? = null; private set }
   private var session: MediaSession? = null
-  private lateinit var player: ExoPlayer
+  private lateinit var coordinator: TransitionPlayer
+  private lateinit var sound: SoundStore
+  private val player: ExoPlayer get() = coordinator.current
   internal lateinit var sleepTimer: SleepTimer
-  internal val audioPlayer: Player get() = player
+  internal val audioPlayer: Player get() = coordinator
   internal val order = QueueOrder()
   private var physicalIndices: Map<String, Int> = emptyMap()
   internal val ready = CompletableDeferred<Unit>()
@@ -47,12 +49,21 @@ class KeyflowPlaybackService : MediaSessionService() {
   }
   override fun onCreate() {
     super.onCreate(); active = this
-    player = ExoPlayer.Builder(this).build().apply {
-      setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
-      setHandleAudioBecomingNoisy(true); setWakeMode(C.WAKE_MODE_LOCAL)
-    }
-    sleepTimer = SleepTimer(player) { notice = "Sleep timer finished."; persist() }
-    player.addListener(object : Player.Listener {
+    sound = SoundStore(this)
+    coordinator = TransitionPlayer(this, TransitionPlayer.newDeck(this) { sound.current }, order,
+      { index, position, command ->
+        when (command) {
+          Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> next()
+          Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> previous()
+          else -> if (index == player.currentMediaItemIndex || index == C.INDEX_UNSET) coordinator.seekCurrent(if (position == C.TIME_UNSET) 0 else position)
+            else { coordinator.change(index); if (position != C.TIME_UNSET && position > 0) coordinator.seekCurrent(position) }
+        }
+      }, { enabled -> shuffle(enabled) }, { _, automatic ->
+        if (automatic) recordedEntry = null
+        indexPhysicalEntries(); cachedRevision = -1
+      }, { sound.current })
+    sleepTimer = SleepTimer(coordinator, coordinator::setEndTimer, { coordinator.pauseImmediately() }) { notice = "Sleep timer finished."; persist() }
+    coordinator.addListener(object : Player.Listener {
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) recordedEntry = null
         order.consume(mediaItem?.mediaId)
@@ -85,18 +96,7 @@ class KeyflowPlaybackService : MediaSessionService() {
         }
       }
     })
-    val transport = object : ForwardingPlayer(player) {
-      override fun getMediaMetadata(): MediaMetadata = player.currentMediaItem?.mediaMetadata ?: MediaMetadata.EMPTY
-      override fun getAvailableCommands(): Player.Commands = super.getAvailableCommands().buildUpon()
-        .remove(Player.COMMAND_SEEK_BACK).remove(Player.COMMAND_SEEK_FORWARD).build()
-      override fun setShuffleModeEnabled(enabled: Boolean) { shuffle(enabled) }
-      override fun getShuffleModeEnabled(): Boolean = order.shuffled
-      override fun seekToNext() { next() }
-      override fun seekToNextMediaItem() { next() }
-      override fun seekToPrevious() { previous() }
-      override fun seekToPreviousMediaItem() { previous() }
-    }
-    val builder = MediaSession.Builder(this, transport).setCallback(object : MediaSession.Callback {
+    val builder = MediaSession.Builder(this, coordinator).setCallback(object : MediaSession.Callback {
       override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
         if (controller.uid == applicationInfo.uid || controller.isTrusted) MediaSession.ConnectionResult.AcceptedResultBuilder(session).build()
         else MediaSession.ConnectionResult.reject()
@@ -171,14 +171,20 @@ class KeyflowPlaybackService : MediaSessionService() {
     failed.clear(); notice = null
     if (sleepTimer.state()["mode"] == "end") sleepTimer.cancel()
     val wasShuffled = order.shuffled
-    order.replace(items.map { it.mediaId }); order.shuffle(wasShuffled, items[start].mediaId)
-    physicalIndices = items.mapIndexed { index, item -> item.mediaId to index }.toMap()
-    player.playbackParameters = PlaybackParameters.DEFAULT
-    player.setMediaItems(items, start, 0); QueueTimeline.apply(player, order)
-    player.prepare(); player.play(); persist()
+    coordinator.changeQueue(items, start, true) {
+      // Commit the new queue with the incoming deck, never before its first audio.
+      order.replace(items.map { it.mediaId }); order.shuffle(wasShuffled, items[start].mediaId)
+      physicalIndices = items.mapIndexed { index, item -> item.mediaId to index }.toMap()
+      cachedRevision = -1
+    }
+    persist()
   }
+  private fun commandIndex() = order.displayed.indexOf(coordinator.requestedId ?: player.currentMediaItem?.mediaId)
   private fun displayedIndex() = order.displayed.indexOf(player.currentMediaItem?.mediaId)
-  private fun seekEntry(id: String) { player.seekTo(physicalIndices.getValue(id), 0) }
+  private fun seekEntry(id: String) {
+    if (id != player.currentMediaItem?.mediaId && sleepTimer.state()["mode"] == "end") sleepTimer.cancel()
+    coordinator.change(physicalIndices.getValue(id))
+  }
   private fun indexPhysicalEntries() {
     physicalIndices = (0 until player.mediaItemCount).associateBy { player.getMediaItemAt(it).mediaId }
   }
@@ -186,16 +192,18 @@ class KeyflowPlaybackService : MediaSessionService() {
     require(id in physicalIndices) { "This queue entry is no longer available." }
     failed.remove(id); notice = null; seekEntry(id)
     if (player.playbackState == Player.STATE_IDLE) player.prepare()
-    player.play(); persist()
+    coordinator.play(); persist()
   }
   internal fun insert(items: List<MediaItem>, playNext: Boolean) {
+    coordinator.beforeQueueEdit()
     val index = order.insert(items.map { it.mediaId }, player.currentMediaItem?.mediaId, playNext)
     if (player.mediaItemCount == 0) player.pause()
-    player.addMediaItems(index, items); indexPhysicalEntries(); QueueTimeline.apply(player, order); persist()
+    player.addMediaItems(index, items); indexPhysicalEntries(); QueueTimeline.apply(player, order); coordinator.invalidatePreload(); persist()
   }
   internal fun move(id: String, delta: Int) {
     val old = physicalIndices[id] ?: error("This queue entry is no longer available.")
     require(delta in -player.mediaItemCount..player.mediaItemCount)
+    coordinator.beforeQueueEdit()
     order.move(id, delta)
     val destination = order.base.indexOf(id)
     if (old != destination) player.moveMediaItem(old, destination)
@@ -203,6 +211,7 @@ class KeyflowPlaybackService : MediaSessionService() {
   }
   internal fun playNext(id: String) {
     val old = physicalIndices[id] ?: error("This queue entry is no longer available.")
+    coordinator.beforeQueueEdit()
     order.playNext(id, player.currentMediaItem?.mediaId)
     val destination = order.base.indexOf(id)
     if (old != destination) player.moveMediaItem(old, destination)
@@ -213,14 +222,16 @@ class KeyflowPlaybackService : MediaSessionService() {
     removeRange(index, index + 1)
   }
   private fun removeRange(start: Int, end: Int) {
+    coordinator.beforeQueueEdit()
     val removed = (start until end).map { player.getMediaItemAt(it).mediaId }.toSet()
     val current = player.currentMediaItem?.mediaId
     if (current in removed && removed.size < order.displayed.size) {
       val index = displayedIndex()
       val replacement = order.displayed.drop(index + 1).firstOrNull { it !in removed }
         ?: order.displayed.take(index).last { it !in removed }
-      seekEntry(replacement)
+      coordinator.change(physicalIndices.getValue(replacement), fade = false)
     }
+    coordinator.tailRemoved(removed)
     order.remove(removed); failed.removeAll(removed)
     player.removeMediaItems(start, end); indexPhysicalEntries(); QueueTimeline.apply(player, order); persist()
   }
@@ -240,19 +251,20 @@ class KeyflowPlaybackService : MediaSessionService() {
     }
   }
   internal fun previous() {
-    val index = displayedIndex()
-    if (QueueOrder.restartPrevious(player.currentPosition)) player.seekTo(0)
+    val index = commandIndex()
+    if (coordinator.requestedId == null && QueueOrder.restartPrevious(player.currentPosition)) coordinator.change(player.currentMediaItemIndex)
     else if (index > 0) seekEntry(order.displayed[index - 1])
     else if (player.repeatMode == Player.REPEAT_MODE_ALL && order.displayed.isNotEmpty()) seekEntry(order.displayed.last())
-    else player.seekTo(0)
+    else coordinator.change(player.currentMediaItemIndex)
   }
   internal fun next() {
-    val index = displayedIndex()
+    val index = commandIndex()
     if (index + 1 < order.displayed.size) seekEntry(order.displayed[index + 1])
     else if (player.repeatMode == Player.REPEAT_MODE_ALL && order.displayed.isNotEmpty()) seekEntry(order.displayed.first())
   }
   internal fun shuffle(enabled: Boolean) {
     if (enabled == order.shuffled) return
+    coordinator.beforeQueueEdit()
     order.shuffle(enabled, player.currentMediaItem?.mediaId)
     QueueTimeline.apply(player, order)
     persist()
@@ -261,7 +273,14 @@ class KeyflowPlaybackService : MediaSessionService() {
     sleepTimer.set(mode, durationMs)
     if (notice == "Sleep timer finished.") notice = null
   }
-  internal fun repeat(mode: String) { player.repeatMode = when(mode) { "off" -> 0; "one" -> 1; "all" -> 2; else -> error("Unknown repeat mode.") }; persist() }
+  internal fun repeat(mode: String) { player.repeatMode = when(mode) { "off" -> 0; "one" -> 1; "all" -> 2; else -> error("Unknown repeat mode.") }; coordinator.invalidatePreload(); persist() }
+  internal fun transitionSettings() = coordinator.settings.map()
+  internal fun soundState() = sound.state(coordinator.overlapHeadroomDb())
+  internal fun updateSound(values: Map<String, Any?>): Map<String, Any?> { sound.update(values); return soundState() }
+  internal fun selectSoundPreset(id: String): Map<String, Any?> { sound.select(id); return soundState() }
+  internal fun saveSoundPreset(name: String): Map<String, Any?> { sound.save(name); return soundState() }
+  internal fun editSoundPreset(id: String, action: String, name: String?): Map<String, Any?> { sound.edit(id, action, name); return soundState() }
+  internal fun updateTransitions(values: Map<String, Any?>) = coordinator.update(values)
   internal fun queuePage(offset: Int, limit: Int): Map<String, Any> {
     val start = offset.coerceIn(0, player.mediaItemCount); val end = (start + limit.coerceIn(1, 100)).coerceAtMost(player.mediaItemCount)
     return mapOf("revision" to order.revision.toDouble(), "total" to player.mediaItemCount, "hasMore" to (end < player.mediaItemCount),
@@ -279,9 +298,9 @@ class KeyflowPlaybackService : MediaSessionService() {
     "queueRevision" to order.revision.toDouble(), "shuffle" to order.shuffled,
     "repeat" to when(player.repeatMode) { 1 -> "one"; 2 -> "all"; else -> "off" },
     "canNext" to (displayedIndex() + 1 < order.displayed.size || (order.displayed.isNotEmpty() && player.repeatMode == 2)),
-    "canPrevious" to (player.mediaItemCount > 0), "notice" to notice)
+    "canPrevious" to (player.mediaItemCount > 0), "notice" to notice, "transition" to coordinator.transitionState())
   private fun persist() {
-    if (restoring || stopping || !::player.isInitialized) return
+    if (restoring || stopping || !::coordinator.isInitialized) return
     if (cachedRevision != order.revision) {
       cachedItems = (0 until player.mediaItemCount).map(player::getMediaItemAt)
       cachedOrder = QueueOrder().apply { restore(order.base, order.displayed, order.shuffled, order.priority) }
@@ -295,7 +314,7 @@ class KeyflowPlaybackService : MediaSessionService() {
     persist(); stopping = true; artworkJob?.cancel()
     sleepTimer.release()
     handler.removeCallbacksAndMessages(null); saves.close(); history.close()
-    session?.release(); player.release(); active = null
+    session?.release(); coordinator.release(); active = null
     // The IO writer drains its final checkpoint independently of the released decoder.
     super.onDestroy()
   }

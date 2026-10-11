@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, FlatList, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, BackHandler, FlatList, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, LinearTransition, runOnJS, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ import { setMiniDestination } from '@/hooks/use-mini-destination';
 import { QueueRow } from '@/components/queue-row';
 import { playback } from '@/modules/keyflow-playback/src';
 import { PlaylistNameDialog } from '@/components/playlist-name-dialog';
+import { ConfirmationDialog } from '@/components/confirmation-dialog';
 
 const dragCellStyle = { opacity: 1, transform: [], elevation: 8 };
 
@@ -43,6 +44,7 @@ export default function QueueScreen() {
     return removed;
   }, [presentRemove, refreshWindow, removeQueueEntry]);
   const [save, setSave] = useState(false); const busy = player.operation !== null;
+  const [clear, setClear] = useState(false);
   const offset = useSharedValue(height); const closing = useSharedValue(false); const touchY = useSharedValue(0); const touchX = useSharedValue(0);
   const close = useCallback(() => { setMiniDestination('/queue'); if (router.canGoBack()) router.back(); else router.replace('/'); }, [router]);
   const entered = useRef(false);
@@ -74,7 +76,7 @@ export default function QueueScreen() {
       <Pressable style={icon} accessibilityRole="button" accessibilityLabel="Close queue" onPress={dismiss}><Ionicons name="chevron-down" size={25} color={c.foreground} /></Pressable>
       <View style={{ flex: 1 }}><Text style={{ color: c.foreground, fontSize: 24, fontWeight: '700' }}>Queue</Text><Text style={{ color: c.secondary, fontSize: 12 }}>{state.queueCount} songs</Text></View>
       <Pressable style={icon} disabled={busy || !state.queueCount} accessibilityRole="button" accessibilityLabel="Save queue as playlist" onPress={() => setSave(true)}><Ionicons name="save-outline" size={22} color={state.queueCount ? c.foreground : c.muted} /></Pressable>
-      <Pressable style={icon} disabled={busy || state.queueIndex + 1 >= state.queueCount} accessibilityRole="button" accessibilityLabel="Clear upcoming songs" onPress={() => Alert.alert('Clear upcoming songs?', 'Keep the current song and songs before it.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear upcoming', style: 'destructive', onPress: () => { void player.clearUpcoming(); } }])}><Ionicons name="trash-outline" size={22} color={state.queueIndex + 1 >= state.queueCount ? c.muted : c.foreground} /></Pressable>
+      <Pressable style={icon} disabled={busy || state.queueIndex + 1 >= state.queueCount} accessibilityRole="button" accessibilityLabel="Clear upcoming songs" onPress={() => setClear(true)}><Ionicons name="trash-outline" size={22} color={state.queueIndex + 1 >= state.queueCount ? c.muted : c.foreground} /></Pressable>
     </View>
     <View style={{ flexDirection: 'row', paddingHorizontal: 24, justifyContent: 'space-between' }}>
       <Pressable style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 }} onPress={() => { void page.refresh(); }} accessibilityRole="button"><Ionicons name="locate-outline" size={18} color={c.accent} /><Text style={{ color: c.accent }}>Current song</Text></Pressable>
@@ -94,5 +96,6 @@ export default function QueueScreen() {
         ListEmptyComponent={<View style={{ flex: 1, gap: 16, alignItems: 'center', justifyContent: 'center', padding: 32 }}>{page.loading ? <ActivityIndicator color={c.accent} /> : <><Ionicons name="list-outline" size={44} color={c.accent} /><Text style={{ color: c.foreground, fontSize: 21, fontWeight: '600' }}>Your queue is empty</Text><Text style={{ color: c.secondary, textAlign: 'center' }}>Play or add songs from the library.</Text></>}</View>} />
     </View>
     <PlaylistNameDialog visible={save} title="Save queue as playlist" onClose={() => setSave(false)} onSave={async name => { await playback!.saveQueueAsPlaylist(name); }} />
+    <ConfirmationDialog visible={clear} title="Clear upcoming songs?" message="Your current song and earlier songs stay in the queue." confirmLabel="Clear" busy={busy} onClose={() => setClear(false)} onConfirm={() => { void player.clearUpcoming(); }} />
   </SafeAreaView></Animated.View></GestureDetector>;
 }

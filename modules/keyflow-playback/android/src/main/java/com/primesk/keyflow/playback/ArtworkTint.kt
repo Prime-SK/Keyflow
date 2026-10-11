@@ -17,7 +17,7 @@ internal object ArtworkTint {
     if (uri.scheme != "file") return null
     val file = File(uri.path ?: return null).canonicalFile
     if (!file.path.startsWith(context.cacheDir.canonicalPath + File.separator) || !file.isFile || file.length() > 4 * 1024 * 1024) return null
-    val key = "${file.path}:${file.length()}"
+    val key = "${file.path}:${file.length()}:${file.lastModified()}"
     if (cache.containsKey(key)) return cache[key]
     val tint = try {
       val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

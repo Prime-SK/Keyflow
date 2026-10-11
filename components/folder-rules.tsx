@@ -6,6 +6,7 @@ import { IconButton } from '@/components/library-controls';
 import { useLibrary } from '@/hooks/use-library';
 import { useLibraryPage } from '@/hooks/use-library-page';
 import { usePlayerTheme } from '@/hooks/use-player-theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { errorMessage } from '@/lib/playback';
 import { library, type LibrarySource } from '@/modules/keyflow-library/src';
 type Rule = { path: string; included: boolean };
@@ -14,6 +15,7 @@ function effective(path: string, rules: Rule[]) {
 }
 export function FolderRules({ source, onClose }: { source: LibrarySource | null; onClose: () => void }) {
   const { colors: c } = usePlayerTheme(); const catalog = useLibrary(); const insets = useSafeAreaInsets();
+  const motion = useReducedMotion();
   const [rules, setRules] = useState<Rule[]>([]); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(''); const [query, setQuery] = useState(''); const live = useRef(true); const request = useRef(0);
   const folders = useLibraryPage('folders', { ...(source ? { sourceId: source.id } : {}), includeExcluded: true, folderSearch: query });
@@ -52,7 +54,7 @@ export function FolderRules({ source, onClose }: { source: LibrarySource | null;
     </View>;
   }
   const known = new Set(folders.items.filter(item => 'key' in item).map(item => 'key' in item ? item.key : ''));
-  return <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+  return <Modal visible transparent animationType={motion.enabled ? 'none' : 'fade'} onRequestClose={onClose}>
     <Pressable onPress={onClose} accessibilityLabel="Dismiss folder settings" style={{ flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' }}>
       <Pressable onPress={event => event.stopPropagation()} accessibilityViewIsModal style={{ backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '88%', paddingBottom: Math.max(insets.bottom, 12) }}>
         <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: c.border, marginTop: 10 }} />

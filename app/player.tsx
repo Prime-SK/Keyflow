@@ -6,7 +6,10 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Animated, BackHandler, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { type PlayerColors } from '@/constants/player-theme';
-import { useArtworkTint, tintedBackground } from '@/hooks/use-artwork-tint';
+import { artworkControls, tintedBackground } from '@/lib/artwork-controls';
+import { useArtworkAppearance } from '@/hooks/use-artwork-appearance';
+import { AtmosphereBackground, ArtworkGlow } from '@/components/artwork-atmosphere';
+import { ArtworkControlIcon, ArtworkControlFill } from '@/components/artwork-control';
 import { usePlayback } from '@/hooks/use-playback';
 import { usePlayerSwipe } from '@/hooks/use-player-swipe';
 import { usePlayerTheme } from '@/hooks/use-player-theme';
@@ -20,14 +23,15 @@ const statusLabels = { empty: 'No song selected', loading: 'Loading song', playi
 
 export default function PlayerScreen() {
   const router = useRouter();
-  const { colors: c, preference, setPreference, isDark } = usePlayerTheme();
+  const { colors: baseColors, preference, setPreference, isDark } = usePlayerTheme();
   const player = usePlayback(); const { state, operation, available } = player;
   const [menu, setMenu] = useState<'more' | 'appearance' | 'sleep' | null>(null);
   const [draftPosition, setDraftPosition] = useState<number | null>(null);
   const { width, height, fontScale } = useWindowDimensions(); const insets = useSafeAreaInsets();
-  const track = state.track; const tint = useArtworkTint(track?.artworkUri);
+  const track = state.track; const appearance = useArtworkAppearance(track?.artworkUri, baseColors.accent);
+  const c = artworkControls(baseColors, appearance.color, isDark);
   const favorite = useFavorite(track, track?.trackId ?? null); const [addPlaylist, setAddPlaylist] = useState(false);
-  const background = tintedBackground(c.background, tint, isDark ? 0.16 : 0.08);
+  const background = !track?.artworkUri || appearance.ready ? tintedBackground(c.background, appearance.color, isDark ? 0.16 : 0.08) : null;
   const s = makeStyles(c); const busy = operation !== null; const position = draftPosition ?? state.positionMs;
   const collapse = () => { setMiniDestination('/player'); if (router.canGoBack()) router.back(); else router.replace('/'); };
   const swipe = usePlayerSwipe({ collapse,
@@ -46,11 +50,11 @@ export default function PlayerScreen() {
   function control(icon: React.ComponentProps<typeof Ionicons>['name'], label: string, action: () => void, disabled = false, selected = false, extra?: React.ReactNode) {
     return <Pressable disabled={busy || disabled} onPress={action} accessibilityRole="button" accessibilityLabel={label}
       accessibilityState={{ disabled: busy || disabled, selected }} style={({ pressed }) => [s.iconButton, disabled && s.disabled, pressed && s.pressed]}>
-      <Ionicons name={icon} size={26} color={selected ? c.accent : c.foreground} />{extra}
+      <ArtworkControlIcon name={icon} size={26} color={selected || icon.startsWith('play-skip') ? c.accent : c.foreground} reduced={swipe.reducedMotion} />{extra}
       {selected && <View style={[s.activeDot, { backgroundColor: c.accent }]} />}
     </Pressable>;
   }
-  return <Animated.View style={{ flex: 1, transform: swipe.verticalTransform }}><SafeAreaView style={[s.safe, { backgroundColor: background }]}>
+  return <Animated.View style={{ flex: 1, transform: swipe.verticalTransform }}><SafeAreaView style={[s.safe, { backgroundColor: c.background }]}><AtmosphereBackground color={background} fallback={c.background} reduced={swipe.reducedMotion} />
     <ScrollView contentContainerStyle={s.page} showsVerticalScrollIndicator={false}>
       <View style={s.topBar} {...swipe.panHandlers}>
         <Pressable onPress={() => { void swipe.dismiss(); }} accessibilityRole="button" accessibilityLabel="Collapse player to library" style={s.iconButton}><Ionicons name="chevron-down" size={26} color={c.foreground} /></Pressable>
@@ -58,13 +62,13 @@ export default function PlayerScreen() {
         <Pressable onPress={() => setMenu('more')} accessibilityRole="button" accessibilityLabel="Player options" style={s.iconButton}><Ionicons name="ellipsis-vertical" size={22} color={c.foreground} /></Pressable>
       </View>
       {!available && <Text style={s.noticeText}>Local playback requires the installed Android Keyflow app.</Text>}
-      <View style={{ overflow: 'hidden' }}><Animated.View {...swipe.panHandlers} style={[s.artworkWrap, { width: artworkSize, transform: swipe.horizontalTransform }]}
+      <View style={{ position: 'relative' }}><ArtworkGlow uri={appearance.glowUri} size={artworkSize} dark={isDark} reduced={swipe.reducedMotion} /><View style={{ overflow: 'hidden' }}><Animated.View {...swipe.panHandlers} style={[s.artworkWrap, { width: artworkSize, transform: swipe.horizontalTransform }]}
         accessibilityHint="Swipe left for next song, right for previous, or down to collapse the player">
         {track?.artworkUri ? <Image source={{ uri: track.artworkUri }} recyclingKey={state.currentEntryId ?? track.uri} transition={0} style={s.artwork} contentFit="cover" accessibilityLabel="Song artwork" />
           : <View style={[s.artwork, s.placeholder]} accessibilityLabel={track ? 'No song artwork' : 'No song selected'}>
             <View style={s.recordOuter}><View style={s.recordMiddle}><View style={s.recordCenter}><Ionicons name="musical-note" size={38} color={c.accent} /></View></View></View>
           </View>}
-      </Animated.View></View>
+      </Animated.View></View></View>
       <View style={s.trackInfo}>
         <MarqueeTitle key={state.currentEntryId ?? 'empty'} title={track?.title ?? 'Your music, ready to play'} textStyle={s.title} height={32 * fontScale} />
         <Text style={[s.artist, { height: 22 * fontScale }]} numberOfLines={1}>{track?.artist ?? (track ? 'Unknown artist' : 'Choose a song from your library')}</Text>
@@ -82,7 +86,7 @@ export default function PlayerScreen() {
           {control('shuffle', state.shuffle ? 'Disable shuffle' : 'Enable shuffle', () => { void player.setShuffle(!state.shuffle); }, false, state.shuffle)}
           {control('play-skip-back', 'Previous or restart song', () => { void player.previous(); }, !state.canPrevious)}
           <Pressable disabled={busy} onPress={() => { void player.toggle(); }} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : state.status === 'ended' ? 'Replay song' : 'Play'} accessibilityState={{ disabled: busy }} style={({ pressed }) => [s.playButton, pressed && s.pressed]}>
-            <Ionicons name={playing ? 'pause' : 'play'} size={38} color={c.onAccent} style={!playing ? { marginLeft: 4 } : undefined} />
+            <ArtworkControlFill color={c.accent} reduced={swipe.reducedMotion}><ArtworkControlIcon name={playing ? 'pause' : 'play'} size={38} color={c.onAccent} reduced={swipe.reducedMotion} style={!playing ? { marginLeft: 4 } : undefined} /></ArtworkControlFill>
           </Pressable>
           {control('play-skip-forward', 'Next song', () => { void player.next(); }, !state.canNext)}
           {control('repeat', `Repeat ${state.repeat}. Change repeat mode`, () => { void player.setRepeat(state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off'); }, false, state.repeat !== 'off', state.repeat === 'one' && <Text style={s.repeatOne}>1</Text>)}
@@ -106,7 +110,8 @@ export default function PlayerScreen() {
           </> : menu === 'appearance' ? ([{ value: 'system', label: 'Follow device', icon: 'phone-portrait-outline' }, { value: 'light', label: 'Light', icon: 'sunny-outline' }, { value: 'dark', label: 'Dark', icon: 'moon-outline' }] as const).map(option =>
             <Pressable key={option.value} onPress={() => { setPreference(option.value); setMenu(null); }} accessibilityRole="radio" accessibilityState={{ checked: preference === option.value }} style={s.menuRow}>
               <Ionicons name={option.icon} size={22} color={c.foreground} /><Text style={s.menuText}>{option.label}</Text>{preference === option.value && <Ionicons name="checkmark" size={22} color={c.accent} />}</Pressable>) : <>
-              <Pressable accessibilityRole="button" onPress={() => setMenu('appearance')} style={s.menuRow}><Ionicons name="contrast-outline" size={22} color={c.foreground} /><Text style={s.menuText}>Appearance</Text><Ionicons name="chevron-forward" size={18} color={c.secondary} /></Pressable>
+              <Pressable accessibilityRole="button" style={s.menuRow} onPress={() => { setMenu(null); router.push('/audio'); }}><Ionicons name="options-outline" size={22} color={c.foreground} /><Text style={s.menuText}>Audio</Text><Ionicons name="chevron-forward" size={18} color={c.muted} /></Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setMenu('appearance')} style={s.menuRow}><Ionicons name="contrast-outline" size={22} color={c.foreground} /><Text style={s.menuText}>Appearance</Text><Ionicons name="chevron-forward" size={18} color={c.secondary} /></Pressable>
               {track && <Pressable accessibilityRole="button" onPress={() => setMenu('sleep')} style={s.menuRow}><Ionicons name="timer-outline" size={22} color={state.sleepTimer.mode === 'off' ? c.foreground : c.accent} /><Text style={s.menuText}>Sleep timer</Text><Text style={s.statusText}>{state.sleepTimer.mode === 'timed' ? formatTime(state.sleepTimer.remainingMs) : state.sleepTimer.mode === 'end' ? 'End of song' : 'Off'}</Text></Pressable>}
               {track && <Pressable accessibilityRole="button" onPress={() => { setMenu(null); setAddPlaylist(true); }} style={s.menuRow}><Ionicons name="add-circle-outline" size={22} color={c.foreground} /><Text style={s.menuText}>Add to playlist</Text></Pressable>}
               {track && <View style={s.fileDetails}><Text style={s.detailLabel}>LOCAL FILE</Text><Text selectable style={s.fileName}>{track.fileName}</Text><Text style={s.statusText}>{track.mimeType ?? 'Audio file'}</Text><Text selectable style={s.fileName}>{track.title}</Text></View>}
@@ -133,7 +138,7 @@ function makeStyles(c: PlayerColors) {
     recordCenter: { width: '57%', aspectRatio: 1, borderRadius: 100, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' },
     trackInfo: { gap: 6, marginBottom: 12 }, title: { color: c.foreground, fontSize: 25, lineHeight: 32, fontWeight: '700', letterSpacing: -0.5, includeFontPadding: false }, artist: { color: c.secondary, fontSize: 15, lineHeight: 22, includeFontPadding: false },
     seekSection: { marginHorizontal: -4, marginBottom: 18 }, slider: { width: '100%', height: 40 }, timeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8 }, time: { color: c.secondary, fontSize: 12, fontVariant: ['tabular-nums'] },
-    transport: { marginHorizontal: -8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }, playButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
+    transport: { marginHorizontal: -8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }, playButton: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
     activeDot: { position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 2 }, repeatOne: { position: 'absolute', color: c.accent, fontSize: 10, fontWeight: '700' },
     footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border }, status: { flexDirection: 'row', alignItems: 'center', gap: 6 }, statusText: { color: c.secondary, fontSize: 12 },
     noticeBox: { flexDirection: 'row', gap: 10, backgroundColor: c.surface, padding: 12, borderRadius: 12, marginBottom: 16 }, noticeText: { flexShrink: 1, fontSize: 13, lineHeight: 20, color: c.secondary }, pressed: { opacity: 0.65 }, disabled: { opacity: 0.35 },

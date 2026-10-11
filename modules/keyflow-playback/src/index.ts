@@ -1,13 +1,21 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
-import type { LocalAudio, PlaybackEvents, PlaybackState, QueuePage } from './types';
+import type { LocalAudio, PlaybackEvents, PlaybackState, QueuePage, TransitionSettings, SoundState, SoundSettings } from './types';
 
 declare class KeyflowPlaybackModule extends NativeModule<PlaybackEvents> {
+  getSoundState(): Promise<SoundState>;
+  updateSoundSettings(values: Partial<SoundSettings>): Promise<SoundState>;
+  selectSoundPreset(id: string): Promise<SoundState>;
+  saveSoundPreset(name: string): Promise<SoundState>;
+  editSoundPreset(id: string, action: 'update' | 'rename' | 'delete', name: string | null): Promise<SoundState>;
+  getTransitionSettings(): Promise<TransitionSettings>;
+  updateTransitionSettings(values: Partial<TransitionSettings>): Promise<TransitionSettings>;
   pickAudio(): Promise<LocalAudio | null>;
   openAudio(audio: LocalAudio): Promise<PlaybackState>;
   getState(): Promise<PlaybackState>;
   getArtworkTint(uri: string): Promise<string | null>;
+  getArtworkAppearance(uri: string | null, fallbackColor: string): Promise<{ color: string | null; glowUri: string }>;
   openLibraryQueue(query: Record<string, unknown>, selected: string): Promise<PlaybackState>;
   openCollection(kind: 'playlist' | 'favorites' | 'recent', id: string | null, selected: string): Promise<PlaybackState>;
   saveQueueAsPlaylist(name: string): Promise<string>;

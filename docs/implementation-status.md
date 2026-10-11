@@ -1,6 +1,9 @@
 # Implementation status
 
-Updated 2026-10-12. Phase 1 playback is verified. Phase 2 library and Phase 3
+Updated 2026-10-12. Phase 4 branding/transitions/EQ and its UI refinements are
+complete and accepted by the owner. Final test APK is installed. Phase 5 has not
+started. The owner has authorized committing the completed Phase 4 work.
+Phase 1 playback is verified. Phase 2 library and Phase 3
 everyday-listening features are implemented. Phase 3C queue/collections phone review
 passed; Phase 3D sleep timers and large-queue recovery pass native phone tests.
 Owner confirmed locked-screen timers, cancellation, resume and playback while
@@ -366,3 +369,153 @@ accessibility and 10,000-track UI scrolling checks remain explicitly open.
 
 Owner authorized committing the Phase 3 milestone and both .vscode file deletions.
 No push, tag or public release is part of this commit request.
+
+
+## Phase 4A started — 2026-10-12
+
+Owner approved the interactive Phase 4 plan. Implementing the first checkpoint only:
+Play K vector/PNG brand assets, cobalt light/dark themes and cached native artwork
+glow with 400ms background/glow transitions and reduced-motion handling. Phone review
+will gate 4B; no crossfade/EQ controls are presented as implemented. Details and agreed
+future behaviors are recorded in docs/phase-4.md. Build/phone validation in progress.
+
+
+4A validation: typecheck and clean lint pass, six JS checks pass, twenty native unit
+tests pass. Both focused phone artwork tests pass (0.758s), covering cached color,
+transparent 256px glow, blue fallback, invalid color rejection and 32-file bounds.
+Base text/secondary/accent contrast exceeds 4.5:1 in both themes. Final standalone
+build (2m15s), APK signature verification and installation pass. Keyflow opened
+without app-scoped AndroidRuntime/ReactNativeJS/Reanimated/Worklets errors.
+Latest APK: artifacts/keyflow-phase-4a.apk (also keyflow-test.apk), 47,804,342 bytes,
+SHA256 9CDFFA93A16614862EC69AB71CA63FEDDC3CE95C35EFA5C9DEDEAF499B6B8902.
+Native playback/queue/database behavior is unchanged. Owner launcher/splash/themes
+and glow/fallback/gesture review requested. Phase 4B is awaiting that review.
+No commit or release.
+
+Installed Now Playing visually inspected on the phone with a red cover. Artwork
+background/glow and cobalt controls are visible, with the existing transport/title
+layout intact. Owner visual/gesture acceptance remains pending.
+
+### Phase 4A owner review amendment
+
+Owner accepted Play K, wordmark, launcher/splash, light/dark palette, ambient glow
+and gestures. Requested controls to follow artwork colors too. Now Playing uses
+contrast-adjusted cover accents for play/pause, skip buttons, seek and active controls,
+with cobalt fallback. Primary button and transport icon colors animate for 400ms
+on the UI thread; reduced motion is immediate. Contrast fixture covers 432 theme/color
+combinations (minimum 4.5:1); seven JS tests, typecheck and lint pass. Phase 4B waits
+for the amended 4A review. No commit or release.
+
+Amended 4A standalone build/signature/install pass. APK: artifacts/keyflow-phase-4a.apk
+(also keyflow-test.apk), SHA256 6D4C5A5E9C15F3DB163CC058338966BE26D6327F5BA303C9D36803BAA35682A8.
+
+
+### Phase 4B transitions
+
+Owner approved 4A dynamic controls. Native two-deck coordinator and Audio
+transition settings implemented. Switches start disabled; remembered defaults are
+5 seconds automatic and 300 ms manual, independent curves, and gapless exclusion.
+One native session/focus owner controls both decks; queue occurrence IDs, FIFO
+priority and shuffle ordering remain in QueueOrder. Library database unchanged.
+Four new envelope/settings tests and existing 15 playback units pass; initial
+three real-decoder phone transition checks pass. Final format/installation and
+owner listening/locked-screen/interruption/recovery acceptance are pending.
+Equalizer will be implemented after 4B review. No commit or release.
+
+4B standalone APK installed successfully. Typecheck/lint/seven JS regressions,
+19 playback units and seven phone decoder/transition/timer tests pass. Test log:
+artifacts/phase-4b-final-device-tests.txt (18.106s). APK:
+artifacts/keyflow-phase-4b.apk (also keyflow-test.apk), 47,829,958 bytes,
+SHA256 ED171B0B7F0B796049B0016C3F79966D2A98FC4D52DC7B4B79FCFDC3CC961C47.
+Owner listening, locked controls, focus/headphones and termination recovery checks
+pending; further mixed-rate/failure acceptance stays tracked for 4D.
+
+Owner confirms 4B automatic crossfade/Repeat one and manual fades with overlap
+pause/resume/seek/rapid skips work correctly. Remaining 4B owner checks requested:
+locked/system controls, focus/headphone interruption, settings persistence and
+paused recovery after termination. Equalizer checkpoint has not started.
+
+Owner accepted locked/system/interruption/recovery/settings checks for 4B.
+Requested same-song Previous restart and play/pause fades, sharing the existing
+manual-fade settings. Implemented restart via the second deck and reversible
+master gain for play/pause, freezing overlap progression during that envelope.
+Immediate focus/headphone/timer stops remain immediate. Same-song restart and
+immediate-stop phone smoke test passed; full amended regressions/build pending.
+
+Final restart/play-pause fade update installed. Shared manual switch/duration/curve;
+turning it off restores immediate play/pause. Nine phone transition/timer tests pass
+(9.851s); 20 playback units, seven JS regressions, typecheck/lint pass. APK:
+artifacts/keyflow-phase-4b.apk (also keyflow-test.apk), SHA256
+B4BC279EBD2BDDD4BB499DE32000CAC38C27182C812275869F76560577692649.
+Amended owner listening review remains pending before 4C. No commit or release.
+
+Owner confirmed restart/play-pause fades: amended 4B accepted. Implemented 4C
+native software EQ, bass/preamp, live smoothing/bypass, explicit custom preset
+management and the Equalizer tab. Fixed built-in values are in docs/phase-4.md.
+Both decks use independent PCM chains with common settings/headroom; versioned
+sound storage is separate from existing library data. Typecheck/lint/seven JS
+checks and 24 native units pass. Twelve phone EQ/decoder/transition/timer checks
+pass (17.862s); standalone build and signature verification pass. APK:
+artifacts/keyflow-phase-4c.apk (also keyflow-test.apk), SHA256
+1C30F6EFCF9F2A26646E493996F1900A6EADAB5BB8D6C191EA9EE9E04ACA1429.
+Installation/listening/preset/UI checkpoint review pending before 4D. No commit.
+
+4C update installed successfully and cold-starts directly. App startup log clean.
+Owner review requested for audible/smooth effects, sliders, explicit-save presets,
+persistence and locked playback/interruption behavior. Await 4C acceptance before 4D.
+
+Owner accepted 4C sound/presets/persistence/locked playback. Requested repair of
+band drags being intercepted by page scrolling and all ten bands fitting onscreen.
+Replaced rotated sliders/horizontal band scrolling with one flexible vertical
+gesture bank; band drags block parent scrolling and track fingers on the UI thread.
+Typecheck/lint pass; standalone build (1m3s), signature and installation pass.
+Updated artifacts/keyflow-phase-4c.apk: SHA256
+4369EB7AD6017FB329DDEF62955E2AF4A8EBF5B6E6DA28179F872D8F7F305BE1.
+Await owner gesture/layout confirmation before 4D. Native DSP unchanged. No commit.
+
+Owner confirmed corrected band gestures/layout. 4C accepted. Final 4D validation:
+typecheck/lint/seven JS, 25 playback + five library unit checks, and all 26 playback
+phone tests pass (36.085s), including mixed sample rates/channels, corrupt preloads,
+headroom transient fixtures and queue/recovery/collections/artwork/timer regressions.
+Fixed editing settings while gapless was already on prematurely ending manual
+overlap; preset dialogs now honor reduced motion. Final standalone build (1m35s)
+and signature pass. artifacts/keyflow-phase-4.apk / keyflow-test.apk: SHA256
+7FE1E4643D9EA6D10209D6C069126E55083059222EC1D143F89ECF1C4D7DB925.
+Final installation/accessibility owner check pending. No commit or public release.
+
+Final Phase 4 APK installed and opens without app startup errors. Owner final
+larger-text/reduced-motion check requested before marking Phase 4 accepted.
+
+Owner accepted text at 110% and Remove animations behavior. Reported grey flashes/
+inconsistent back animations on playlists/settings/audio and native queue-clear
+dialog. Applied Keyflow navigation theme/root backgrounds and a common horizontal
+transition for detail routes; player/queue keep sheet dismissal. Added reusable
+themed confirmations across queue, history, playlists, presets and scan sources,
+including reduced-motion and accessible button behavior. Typecheck/lint and build
+(1m24s) pass; signature/update installation/startup pass. Native audio/data unchanged.
+Latest artifacts/keyflow-phase-4.apk / keyflow-test.apk: SHA256
+B506582D9EDF0C37AC653AA7395DC57AF6034917F5CAAD89F727A2C7B496D143.
+Owner back-animation/confirmation review pending before Phase 4 completion. No commit.
+
+Owner confirms smooth/consistent back transitions and themed confirmation behavior.
+Requested simpler dialog design. Referenced official Material UI dialog examples;
+removed icon tile/filled button blocks and tightened the title/body/actions layout.
+Queue Clear now uses cobalt text, deletion actions use danger text. Typecheck/lint
+pass. Updated APK build/design review pending. No commit or public release.
+
+Simplified-dialog APK builds (1m19s), verifies, installs and starts successfully.
+Latest artifacts/keyflow-phase-4.apk / keyflow-test.apk: SHA256
+E5C81AFCB52DDF946605C077EB22C16F092BB0D319143366488FC1BB01B34C45.
+Owner final dialog appearance review pending. No commit or public release.
+
+Owner approved the simplified dialog. Phase 4 is complete and accepted, including
+all physical checkpoint reviews and the navigation/dialog corrections. Latest
+installed APK hash: E5C81AFCB52DDF946605C077EB22C16F092BB0D319143366488FC1BB01B34C45.
+Typecheck/lint/build/signature/startup pass; seven JS regressions, 30 native units
+and 26 phone checks pass. Wider hardware/storage/accessibility/10k scrolling checks
+remain tracked separately. Phase 5 not started. No commit, tag or public release.
+
+Owner requested the completed Phase 4 commit. Include branding, native transitions/
+sound controls, navigation/dialog refinements, tests and acceptance documentation.
+Generated APKs, tool caches and Android build outputs remain ignored. No push,
+tag or public release requested.

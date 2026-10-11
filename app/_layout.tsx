@@ -1,5 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { View } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -18,14 +20,15 @@ export default function RootLayout() {
 function PlayerNavigation() {
   const { colors, isDark } = usePlayerTheme();
   const motion = useReducedMotion();
-  return <>
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+  const base = isDark ? DarkTheme : DefaultTheme;
+  const navigationTheme = { ...base, colors: { ...base.colors, background: colors.background,
+    card: colors.surface, text: colors.foreground, primary: colors.accent, border: colors.border, notification: colors.accent } };
+  return <ThemeProvider value={navigationTheme}><View style={{ flex: 1, backgroundColor: colors.background }}>
+    <Stack screenOptions={{ headerShown: false, animation: motion.enabled ? 'none' : 'slide_from_right', contentStyle: { backgroundColor: colors.background } }}>
       <Stack.Screen name="player" options={{ presentation: 'transparentModal', animation: 'none', contentStyle: { backgroundColor: 'transparent' } }} />
       <Stack.Screen name="queue" options={{ presentation: 'transparentModal', animation: 'none', contentStyle: { backgroundColor: 'transparent' } }} />
-      <Stack.Screen name="collections" options={{ animation: motion.enabled ? 'none' : 'slide_from_right' }} />
-      <Stack.Screen name="collection" options={{ animation: motion.enabled ? 'none' : 'slide_from_right' }} />
     </Stack>
     <StatusBar style={isDark ? 'light' : 'dark'} />
     <MiniPlayer />
-  </>;
+  </View></ThemeProvider>;
 }

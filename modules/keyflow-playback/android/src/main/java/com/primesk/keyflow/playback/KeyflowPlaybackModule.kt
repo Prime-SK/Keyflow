@@ -71,6 +71,9 @@ class KeyflowPlaybackModule : Module() {
     AsyncFunction("getArtworkTint") Coroutine { uri: String ->
       withContext(Dispatchers.IO) { ArtworkTint.read(context(), uri) }
     }
+    AsyncFunction("getArtworkAppearance") Coroutine { uri: String?, fallbackColor: String ->
+      withContext(Dispatchers.IO) { ArtworkAmbient.read(context(), uri, fallbackColor) }
+    }
     AsyncFunction("setThemePreference") { preference: String ->
       require(preference in listOf("system", "light", "dark")) { "Choose system, light, or dark appearance." }
       context().getSharedPreferences("keyflow-settings", 0).edit().putString("theme", preference).apply()
@@ -95,6 +98,13 @@ class KeyflowPlaybackModule : Module() {
       }
     }
 
+    AsyncFunction("getTransitionSettings") Coroutine { -> withContext(Dispatchers.Main) { getController(); service().transitionSettings() } }
+    AsyncFunction("getSoundState") Coroutine { -> withContext(Dispatchers.Main) { getController(); service().soundState() } }
+    AsyncFunction("updateSoundSettings") Coroutine { values: Map<String, Any?> -> withContext(Dispatchers.Main) { getController(); service().updateSound(values) } }
+    AsyncFunction("selectSoundPreset") Coroutine { id: String -> withContext(Dispatchers.Main) { getController(); service().selectSoundPreset(id) } }
+    AsyncFunction("saveSoundPreset") Coroutine { name: String -> withContext(Dispatchers.Main) { getController(); service().saveSoundPreset(name) } }
+    AsyncFunction("editSoundPreset") Coroutine { id: String, action: String, name: String? -> withContext(Dispatchers.Main) { getController(); service().editSoundPreset(id, action, name) } }
+    AsyncFunction("updateTransitionSettings") Coroutine { values: Map<String, Any?> -> withContext(Dispatchers.Main) { getController(); service().updateTransitions(values) } }
     AsyncFunction("getState") Coroutine { -> withContext(Dispatchers.Main) { state(getController()) } }
 
     AsyncFunction("openAudio") Coroutine { audio: Map<String, Any?> -> withContext(Dispatchers.Main) {

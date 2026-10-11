@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FolderRules } from '@/components/folder-rules';
+import { ConfirmationDialog } from '@/components/confirmation-dialog';
 import { IconButton, SettingsRow } from '@/components/library-controls';
 import { useLibrary } from '@/hooks/use-library';
 import { usePlayerTheme } from '@/hooks/use-player-theme';
@@ -13,6 +14,7 @@ const accessLabels = { available: 'Accessible', permission: 'Renew access', disc
 export default function SourcesScreen() {
   const router = useRouter(); const { colors: c, preference, setPreference } = usePlayerTheme(); const catalog = useLibrary();
   const [ruleScope, setRuleScope] = useState<LibrarySource | null | undefined>();
+  const [removeSource, setRemoveSource] = useState<LibrarySource | null>(null);
   const scanning = catalog.scan.status === 'running'; const disabled = catalog.busy || scanning || !catalog.available;
   const section = (title: string) => <Text style={{ color: c.muted, fontSize: 11, fontWeight: '700', letterSpacing: 1.4, marginTop: 24, marginBottom: 8, textTransform: 'uppercase' }}>{title}</Text>;
   const surface = { backgroundColor: c.surface, borderRadius: 16, overflow: 'hidden' as const };
@@ -45,13 +47,16 @@ export default function SourcesScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}><Text style={{ flex: 1, color: c.muted, fontSize: 11 }}>{source.lastCompleted ? `Scanned ${new Date(source.lastCompleted).toLocaleDateString()}` : 'Not yet scanned'}</Text>
           <IconButton icon="filter-outline" label={`Folder rules for ${source.name}`} disabled={disabled} onPress={() => setRuleScope(source)} />
           {source.kind === 'folder' && source.access !== 'available' && <IconButton icon="key-outline" label={`Renew access to ${source.name}`} disabled={disabled} onPress={() => { void catalog.run(() => library!.addFolder()); }} />}
-          <IconButton icon="trash-outline" label={`Remove source ${source.name}`} disabled={disabled} danger onPress={() => Alert.alert('Remove this source?', 'Audio files stay on your device. You can add the source again later.', [{ text: 'Keep', style: 'cancel' }, { text: 'Remove', onPress: () => { void catalog.run(() => library!.removeSource(source.id)); } }])} />
+          <IconButton icon="trash-outline" label={`Remove source ${source.name}`} disabled={disabled} danger onPress={() => setRemoveSource(source)} />
         </View>
       </View>)}</View>
       {!catalog.sources.length && <Text style={{ color: c.muted, fontSize: 12, paddingTop: 12 }}>Add a source to begin. Your original files stay untouched.</Text>}
+      {section('Playback')}
+      <View style={surface}><SettingsRow icon="options-outline" title="Audio" subtitle="Crossfade, manual fade and gapless" onPress={() => router.push('/audio')} /></View>
       {section('Appearance')}
       <View style={[surface, { flexDirection: 'row', padding: 6 }]}>{(['system', 'light', 'dark'] as const).map(value => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: preference === value }} onPress={() => setPreference(value)} style={({ pressed }) => ({ flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, gap: 7, backgroundColor: preference === value ? c.accentSoft : 'transparent', opacity: pressed ? 0.6 : 1 })}><Ionicons name={value === 'system' ? 'phone-portrait-outline' : value === 'light' ? 'sunny-outline' : 'moon-outline'} size={20} color={preference === value ? c.accent : c.muted} /><Text style={{ color: preference === value ? c.accent : c.secondary, fontSize: 12, textTransform: 'capitalize' }}>{value}</Text></Pressable>)}</View>
     </ScrollView>
     {ruleScope !== undefined && <FolderRules source={ruleScope} onClose={() => setRuleScope(undefined)} />}
+    <ConfirmationDialog destructive visible={removeSource !== null} title="Remove this source?" message="Audio files stay on your device. You can add the source again later." cancelLabel="Keep" confirmLabel="Remove" busy={disabled} onClose={() => setRemoveSource(null)} onConfirm={() => { if (removeSource) void catalog.run(() => library!.removeSource(removeSource.id)); }} />
   </SafeAreaView>;
 }

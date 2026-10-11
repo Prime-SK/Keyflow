@@ -9,7 +9,7 @@ import androidx.media3.exoplayer.ExoPlayer
 
 /** Service-owned, one-shot timer. Never restored after process termination. */
 @UnstableApi
-internal class SleepTimer(private val player: ExoPlayer, private val expired: () -> Unit) : Player.Listener {
+internal class SleepTimer(private val player: Player, private val pauseAtEnd: (Boolean) -> Unit, private val pauseNow: () -> Unit = { player.pause() }, private val expired: () -> Unit) : Player.Listener {
   private val handler = Handler(Looper.getMainLooper())
   private var deadline = 0L
   private var entry: String? = null
@@ -32,7 +32,7 @@ internal class SleepTimer(private val player: ExoPlayer, private val expired: ()
       handler.post(tick)
     } else if (mode == "end") {
       entry = player.currentMediaItem!!.mediaId
-      player.setPauseAtEndOfMediaItems(true)
+      pauseAtEnd(true)
     }
   }
   fun state(): Map<String, Any> = mapOf(
@@ -51,10 +51,10 @@ internal class SleepTimer(private val player: ExoPlayer, private val expired: ()
   override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
     if (entry != null) finish()
   }
-  private fun finish() { cancel(); player.pause(); expired() }
+  private fun finish() { cancel(); pauseNow(); expired() }
   fun cancel() {
     deadline = 0; entry = null; handler.removeCallbacks(tick)
-    player.setPauseAtEndOfMediaItems(false)
+    pauseAtEnd(false)
   }
   fun release() { cancel(); player.removeListener(this) }
 }

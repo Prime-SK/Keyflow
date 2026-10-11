@@ -25,7 +25,7 @@ class SleepTimerDeviceTest {
     lateinit var player: ExoPlayer; lateinit var timer: SleepTimer
     i.runOnMainSync {
       player = ExoPlayer.Builder(i.targetContext).build(); player.volume = 0f
-      timer = SleepTimer(player) { expired.countDown() }
+      timer = SleepTimer(player, player::setPauseAtEndOfMediaItems) { expired.countDown() }
       player.addListener(object : Player.Listener { override fun onIsPlayingChanged(value: Boolean) { if(value) ready.countDown() } })
       player.setMediaItems((0..1).map { MediaItem.Builder().setMediaId("sleep-$it").setUri(Uri.fromFile(file)).build() })
       player.repeatMode = Player.REPEAT_MODE_ONE; player.prepare(); player.play()

@@ -15,9 +15,9 @@
       "package": "com.primesk.keyflow",
       "allowBackup": false,
       "adaptiveIcon": {
-        "backgroundColor": "#F6F7F3",
-        "foregroundImage": "./assets/branding/keyflow-icon.png",
-        "monochromeImage": "./assets/branding/keyflow-icon.png"
+        "backgroundColor": "#0B1020",
+        "foregroundImage": "./assets/branding/keyflow-adaptive-foreground.png",
+        "monochromeImage": "./assets/branding/keyflow-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -34,11 +34,12 @@
         "expo-splash-screen",
         {
           "image": "./assets/branding/keyflow-logo.png",
-          "imageWidth": 180,
+          "imageWidth": 210,
           "resizeMode": "contain",
-          "backgroundColor": "#F6F7F3",
+          "backgroundColor": "#F4F7FD",
           "dark": {
-            "backgroundColor": "#F6F7F3"
+            "image": "./assets/branding/keyflow-logo-dark.png",
+            "backgroundColor": "#0B1020"
           }
         }
       ]
@@ -46,6 +47,7 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "primaryColor": "#1E40AF"
   }
 }
